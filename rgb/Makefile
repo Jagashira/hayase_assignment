@@ -1,22 +1,14 @@
-CC		= cc
+CC = gcc
+CFLAGS = $(shell pkg-config --cflags gtk+-3.0)
+LIBS = $(shell pkg-config --libs gtk+-3.0)
 
-CFLAGS		= `pkg-config --cflags gtk+-2.0`
+all: rgb
 
-LDFLAGS		= `pkg-config --libs-only-L gtk+-2.0`
+rgb: rgb.o
+	$(CC) -o rgb rgb.o $(LIBS)
 
-LIBS		= `pkg-config --libs-only-l gtk+-2.0`
+rgb.o: rgb.c
+	$(CC) $(CFLAGS) -c rgb.c
 
-SRCS		= rgb.c
-
-OBJS		= $(SRCS:.c=.o)
-
-PROGRAM		= rgb
-
-all:		$(PROGRAM)
-
-$(PROGRAM):	$(OBJS) $(HDRS) 
-		$(CC) $(OBJS) $(LDFLAGS) $(LIBS) -o $(PROGRAM)
-
-clean:;		rm -f *.o *~ $(PROGRAM)
-
-###                                                         End of Makefile
+clean:
+	rm -f rgb rgb.o
