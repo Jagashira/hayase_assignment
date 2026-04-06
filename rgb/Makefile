@@ -1,14 +1,42 @@
 CC = gcc
-CFLAGS = $(shell pkg-config --cflags gtk+-3.0)
-LIBS = $(shell pkg-config --libs gtk+-3.0)
+CFLAGS = $(shell pkg-config --cflags gtk+-3.0 gdk-pixbuf-2.0)
+LIBS = $(shell pkg-config --libs gtk+-3.0 gdk-pixbuf-2.0)
 
-all: rgb
+.PHONY: all build rebuild clean
 
-rgb: rgb.o
-	$(CC) -o rgb rgb.o $(LIBS)
+all:
+	@echo "既存の all です"
+	@echo "使い方:"
+	@echo "  make build FILE=grey"
+	@echo "  make rebuild FILE=grey"
+	@echo "  make clean FILE=grey"
 
-rgb.o: rgb.c
-	$(CC) $(CFLAGS) -c rgb.c
+build:
+	@if [ -z "$(FILE)" ]; then \
+		echo "使い方: make build FILE=grey"; \
+		exit 1; \
+	fi
+	$(CC) $(FILE).c -o $(FILE) $(CFLAGS) $(LIBS)
+
+rebuild:
+	@if [ -z "$(FILE)" ]; then \
+		echo "使い方: make rebuild FILE=grey"; \
+		exit 1; \
+	fi
+	$(MAKE) clean FILE=$(FILE)
+	$(MAKE) build FILE=$(FILE)
 
 clean:
-	rm -f rgb rgb.o
+	@if [ -z "$(FILE)" ]; then \
+		echo "使い方: make clean FILE=grey"; \
+		exit 1; \
+	fi
+	rm -f $(FILE)
+
+
+open:
+	@if [ -z "$(FILE)" ]; then \
+		echo "使い方: make open FILE=hayase_grey.jpg"; \
+		exit 1; \
+	fi
+	explorer.exe "$$(wslpath -w $(FILE))"
