@@ -40,3 +40,18 @@ open:
 		exit 1; \
 	fi
 	explorer.exe "$$(wslpath -w $(FILE))"
+
+
+plot:
+	@if [ -z "$(FILE)" ]; then \
+		echo "使い方: make plot FILE=gray.dat"; \
+		exit 1; \
+	fi	
+	gnuplot -persist -e "FILE='$(FILE)'" -e "set terminal wxt; unset key; set size ratio -1; set view map; set yrange [*:*] reverse; plot FILE using 1:2:3 with image"
+
+plot3d:
+	@if [ -z "$(FILE)" ]; then \
+		echo "使い方: make plot3d FILE=gray.dat"; \
+		exit 1; \
+	fi
+	gnuplot -persist -e "FILE='$(FILE)'" -e "set terminal wxt; unset key; set view 65,35; set hidden3d; set palette gray; splot FILE using 1:2:3 with lines"
