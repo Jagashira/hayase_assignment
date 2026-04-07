@@ -1185,22 +1185,24 @@ void CLASS pentax_load_raw()
 void CLASS nikon_load_raw()
 {
   static const uchar nikon_tree[][32] = {
-    { 0,1,5,1,1,1,1,1,1,2,0,0,0,0,0,0,	/* 12-bit lossy */
+    { 0,1,5,1,1,1,1,1,1,2,0,0,0,0,0,0,
       5,4,3,6,2,7,1,0,8,9,11,10,12 },
-    { 0,1,5,1,1,1,1,1,1,2,0,0,0,0,0,0,	/* 12-bit lossy after split */
+    { 0,1,5,1,1,1,1,1,1,2,0,0,0,0,0,0,
       0x39,0x5a,0x38,0x27,0x16,5,4,3,2,1,0,11,12,12 },
-    { 0,1,4,2,3,1,2,0,0,0,0,0,0,0,0,0,  /* 12-bit lossless */
+    { 0,1,4,2,3,1,2,0,0,0,0,0,0,0,0,0,
       5,4,6,3,7,2,8,1,9,0,10,11,12 },
-    { 0,1,4,3,1,1,1,1,1,2,0,0,0,0,0,0,	/* 14-bit lossy */
+    { 0,1,4,3,1,1,1,1,1,2,0,0,0,0,0,0,
       5,6,4,7,8,3,9,2,1,0,10,11,12,13,14 },
-    { 0,1,5,1,1,1,1,1,1,1,2,0,0,0,0,0,	/* 14-bit lossy after split */
+    { 0,1,5,1,1,1,1,1,1,1,2,0,0,0,0,0,
       8,0x5c,0x4b,0x3a,0x29,7,6,5,4,3,2,1,0,13,14 },
-    { 0,1,4,2,2,3,1,2,0,0,0,0,0,0,0,0,	/* 14-bit lossless */
+    { 0,1,4,2,2,3,1,2,0,0,0,0,0,0,0,0,
       7,6,8,5,9,4,10,3,11,12,2,0,1,13,14 } };
   ushort *huff, ver0, ver1, vpred[2][2], hpred[2], csize;
   int i, min, max, step=0, tree=0, split=0, row, col, len, shl, diff;
+  unsigned val;
 
   fseek (ifp, meta_offset, SEEK_SET);
+  fprintf(stderr, "nikon_load_raw called\n");
   ver0 = fgetc(ifp);
   ver1 = fgetc(ifp);
   if (ver0 == 0x49 || ver1 == 0x58)
@@ -1216,7 +1218,7 @@ void CLASS nikon_load_raw()
       curve[i*step] = get2();
     for (i=0; i < max; i++)
       curve[i] = ( curve[i-i%step]*(step-i%step) +
-		   curve[i-i%step+step]*(i%step) ) / step;
+                   curve[i-i%step+step]*(i%step) ) / step;
     fseek (ifp, meta_offset+562, SEEK_SET);
     split = get2();
   } else if (ver0 != 0x46 && csize <= 0x4001)
@@ -1225,6 +1227,7 @@ void CLASS nikon_load_raw()
   huff = make_decoder (nikon_tree[tree]);
   fseek (ifp, data_offset, SEEK_SET);
   getbits(-1);
+
   for (min=row=0; row < height; row++) {
     if (split && row == split) {
       free (huff);
@@ -1237,13 +1240,25 @@ void CLASS nikon_load_raw()
       shl = i >> 4;
       diff = ((getbits(len-shl) << 1) + 1) << shl >> 1;
       if ((diff & (1 << (len-1))) == 0)
-	diff -= (1 << len) - !shl;
+        diff -= (1 << len) - !shl;
       if (col < 2) hpred[col] = vpred[row & 1][col] += diff;
-      else	   hpred[col & 1] += diff;
+      else         hpred[col & 1] += diff;
       if ((ushort)(hpred[col & 1] + min) >= max) derror();
       RAW(row,col) = curve[LIM((short)hpred[col & 1],0,0x3fff)];
     }
   }
+
+  /* ここから自分の処理：R画素だけ2倍 */
+  for (row=0; row < height; row++) {
+    for (col=0; col < raw_width; col++) {
+      if ((row % 2 == 0) && (col % 2 == 0)) {
+        val = RAW(row,col) * 2;
+        if (val > 65535) val = 65535;
+        RAW(row,col) = val;
+      }
+    }
+  }
+
   free (huff);
 }
 
@@ -1868,14 +1883,34 @@ void CLASS leaf_hdr_load_raw()
 void CLASS unpacked_load_raw()
 {
   int row, col, bits=0;
+  printf("unpacked_load_raw called\n");
 
   while (1 << ++bits < maximum);
   read_shorts (raw_image, raw_width*raw_height);
+  void CLASS unpacked_load_raw()
+{
+  int row, col, bits=0;
+  unsigned val;
+
+  while (1 << ++bits < maximum);
+  read_shorts (raw_image, raw_width*raw_height);
+
+  for (row=0; row < raw_height; row++) {
+    for (col=0; col < raw_width; col++) {
+      if ((row % 2 == 0) && (col % 2 == 0)) {
+        val = raw_image[row * raw_width + col] * 2;
+        if (val > 65535) val = 65535;
+        raw_image[row * raw_width + col] = val;
+      }
+    }
+  }
+
   for (row=0; row < raw_height; row++)
     for (col=0; col < raw_width; col++)
       if ((RAW(row,col) >>= load_flags) >> bits
-	&& (unsigned) (row-top_margin) < height
-	&& (unsigned) (col-left_margin) < width) derror();
+        && (unsigned) (row-top_margin) < height
+        && (unsigned) (col-left_margin) < width) derror();
+}
 }
 
 void CLASS sinar_4shot_load_raw()
