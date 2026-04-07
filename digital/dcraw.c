@@ -1249,15 +1249,56 @@ void CLASS nikon_load_raw()
   }
 
   /* ここから自分の処理：R画素だけ2倍 */
-  for (row=0; row < height; row++) {
-    for (col=0; col < raw_width; col++) {
-      if ((row % 2 == 0) && (col % 2 == 0)) {
-        val = RAW(row,col) * 2;
-        if (val > 65535) val = 65535;
-        RAW(row,col) = val;
+/* ここから自分の処理 */
+  {
+    int mode = 4;   /* 1:Rだけ2倍  2:R以外を1/8  3:Gだけ残す  4:Bだけ残す */
+    unsigned val;
+
+    for (row = 0; row < height; row++) {
+      for (col = 0; col < raw_width; col++) {
+
+        /* RG/GB 配列
+           even row, even col -> R
+           even row, odd  col -> G
+           odd  row, even col -> G
+           odd  row, odd  col -> B
+        */
+
+        if (mode == 1) {
+          /* R画素だけ2倍 */
+          if ((row % 2 == 0) && (col % 2 == 0)) {
+            val = RAW(row,col) * 2;
+            if (val > 65535) val = 65535;
+            RAW(row,col) = val;
+          }
+        }
+
+        else if (mode == 2) {
+          /* R以外をかなり暗くする */
+          if (!((row % 2 == 0) && (col % 2 == 0))) {
+            RAW(row,col) = RAW(row,col) / 8;
+          }
+        }
+
+        else if (mode == 3) {
+          /* Gだけ残す */
+          if (!(((row % 2 == 0) && (col % 2 == 1)) ||
+                ((row % 2 == 1) && (col % 2 == 0)))) {
+            RAW(row,col) = 0;
+          }
+        }
+
+        else if (mode == 4) {
+          /* Bだけ残す */
+          if (!((row % 2 == 1) && (col % 2 == 1))) {
+            RAW(row,col) = 0;
+          }
+        }
+
       }
     }
   }
+
 
   free (huff);
 }
