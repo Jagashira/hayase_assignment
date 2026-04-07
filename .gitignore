@@ -2,3 +2,4 @@ hoge.dat
 public/
 rgb/rgb
 rgb/grey
+**/*.out
