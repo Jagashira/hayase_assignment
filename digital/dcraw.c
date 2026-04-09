@@ -1197,22 +1197,28 @@ void CLASS nikon_load_raw()
       8,0x5c,0x4b,0x3a,0x29,7,6,5,4,3,2,1,0,13,14 },
     { 0,1,4,2,2,3,1,2,0,0,0,0,0,0,0,0,
       7,6,8,5,9,4,10,3,11,12,2,0,1,13,14 } };
+
   ushort *huff, ver0, ver1, vpred[2][2], hpred[2], csize;
   int i, min, max, step=0, tree=0, split=0, row, col, len, shl, diff;
-  unsigned val;
 
   fseek (ifp, meta_offset, SEEK_SET);
   fprintf(stderr, "nikon_load_raw called\n");
   ver0 = fgetc(ifp);
   ver1 = fgetc(ifp);
+
   if (ver0 == 0x49 || ver1 == 0x58)
     fseek (ifp, 2110, SEEK_CUR);
-  if (ver0 == 0x46) tree = 2;
-  if (tiff_bps == 14) tree += 3;
+  if (ver0 == 0x46)
+    tree = 2;
+  if (tiff_bps == 14)
+    tree += 3;
+
   read_shorts (vpred[0], 4);
   max = 1 << tiff_bps & 0x7fff;
+
   if ((csize = get2()) > 1)
     step = max / (csize-1);
+
   if (ver0 == 0x44 && ver1 == 0x20 && step > 0) {
     for (i=0; i < csize; i++)
       curve[i*step] = get2();
@@ -1221,9 +1227,12 @@ void CLASS nikon_load_raw()
                    curve[i-i%step+step]*(i%step) ) / step;
     fseek (ifp, meta_offset+562, SEEK_SET);
     split = get2();
-  } else if (ver0 != 0x46 && csize <= 0x4001)
+  } else if (ver0 != 0x46 && csize <= 0x4001) {
     read_shorts (curve, max=csize);
+  }
+
   while (curve[max-2] == curve[max-1]) max--;
+
   huff = make_decoder (nikon_tree[tree]);
   fseek (ifp, data_offset, SEEK_SET);
   getbits(-1);
@@ -1234,71 +1243,117 @@ void CLASS nikon_load_raw()
       huff = make_decoder (nikon_tree[tree+1]);
       max += (min = 16) << 1;
     }
+
     for (col=0; col < raw_width; col++) {
       i = gethuff(huff);
       len = i & 15;
       shl = i >> 4;
       diff = ((getbits(len-shl) << 1) + 1) << shl >> 1;
+
       if ((diff & (1 << (len-1))) == 0)
         diff -= (1 << len) - !shl;
-      if (col < 2) hpred[col] = vpred[row & 1][col] += diff;
-      else         hpred[col & 1] += diff;
-      if ((ushort)(hpred[col & 1] + min) >= max) derror();
+
+      if (col < 2)
+        hpred[col] = vpred[row & 1][col] += diff;
+      else
+        hpred[col & 1] += diff;
+
+      if ((ushort)(hpred[col & 1] + min) >= max)
+        derror();
+
       RAW(row,col) = curve[LIM((short)hpred[col & 1],0,0x3fff)];
     }
   }
 
-  /* ここから自分の処理：R画素だけ2倍 */
-/* ここから自分の処理 */
+  /* custom processing + csv output */
   {
-    int mode = 4;   /* 1:Rだけ2倍  2:R以外を1/8  3:Gだけ残す  4:Bだけ残す */
-    unsigned val;
+    FILE *fp_value, *fp_color_value;
+    int rmax = 100, cmax = 100;
+    int mode = 0;   /* 0:no change  1:R only  2:G only  3:B only */
+    char color;
 
-    for (row = 0; row < height; row++) {
-      for (col = 0; col < raw_width; col++) {
+    /* modeに応じたRAW加工 */
+    if (mode != 0) {
+      for (row = 0; row < height; row++) {
+        for (col = 0; col < raw_width; col++) {
 
-        /* RG/GB 配列
-           even row, even col -> R
-           even row, odd  col -> G
-           odd  row, even col -> G
-           odd  row, odd  col -> B
-        */
+          /* RG/GB pattern
+             even row, even col -> R
+             even row, odd  col -> G
+             odd  row, even col -> G
+             odd  row, odd  col -> B
+          */
 
-        if (mode == 1) {
-          /* R画素だけ2倍 */
-          if ((row % 2 == 0) && (col % 2 == 0)) {
-            val = RAW(row,col) * 2;
-            if (val > 65535) val = 65535;
-            RAW(row,col) = val;
+          if (mode == 1) {
+            /* keep only R */
+            if (!((row % 2 == 0) && (col % 2 == 0))) {
+              RAW(row,col) = 0;
+            }
           }
-        }
-
-        else if (mode == 2) {
-          /* R以外をかなり暗くする */
-          if (!((row % 2 == 0) && (col % 2 == 0))) {
-            RAW(row,col) = RAW(row,col) / 8;
+          else if (mode == 2) {
+            /* keep only G */
+            if (!(((row % 2 == 0) && (col % 2 == 1)) ||
+                  ((row % 2 == 1) && (col % 2 == 0)))) {
+              RAW(row,col) = 0;
+            }
           }
-        }
-
-        else if (mode == 3) {
-          /* Gだけ残す */
-          if (!(((row % 2 == 0) && (col % 2 == 1)) ||
-                ((row % 2 == 1) && (col % 2 == 0)))) {
-            RAW(row,col) = 0;
+          else if (mode == 3) {
+            /* keep only B */
+            if (!((row % 2 == 1) && (col % 2 == 1))) {
+              RAW(row,col) = 0;
+            }
           }
-        }
 
-        else if (mode == 4) {
-          /* Bだけ残す */
-          if (!((row % 2 == 1) && (col % 2 == 1))) {
-            RAW(row,col) = 0;
-          }
         }
-
       }
     }
-  }
 
+    /* CSV出力範囲を制限 */
+    if (rmax > height) rmax = height;
+    if (cmax > raw_width) cmax = raw_width;
+
+    fp_value = fopen("raw_value_100x100.csv", "w");
+    fp_color_value = fopen("raw_color_value_100x100.csv", "w");
+
+    if (!fp_value || !fp_color_value) {
+      fprintf(stderr, "cannot open csv files\n");
+      if (fp_value) fclose(fp_value);
+      if (fp_color_value) fclose(fp_color_value);
+    } else {
+      for (row = 0; row < rmax; row++) {
+        for (col = 0; col < cmax; col++) {
+
+          if ((row % 2 == 0) && (col % 2 == 0)) {
+            color = 'R';
+          } else if (((row % 2 == 0) && (col % 2 == 1)) ||
+                     ((row % 2 == 1) && (col % 2 == 0))) {
+            color = 'G';
+          } else {
+            color = 'B';
+          }
+
+          /* value only */
+          fprintf(fp_value, "%u", RAW(row,col));
+
+          /* color + value */
+          fprintf(fp_color_value, "%c%u", color, RAW(row,col));
+
+          if (col < cmax - 1) {
+            fprintf(fp_value, ",");
+            fprintf(fp_color_value, ",");
+          }
+        }
+        fprintf(fp_value, "\n");
+        fprintf(fp_color_value, "\n");
+      }
+
+      fclose(fp_value);
+      fclose(fp_color_value);
+
+      fprintf(stderr, "raw_value_100x100.csv written\n");
+      fprintf(stderr, "raw_color_value_100x100.csv written\n");
+    }
+  }
 
   free (huff);
 }

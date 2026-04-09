@@ -1,5 +1,49 @@
-hoge.dat
-public/
-rgb/rgb
+# OS / editor
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
+
+# Windows Zone.Identifier
+*:Zone.Identifier
+
+# Build outputs
+a.out
+*.o
+*.out
+
+# executables
 rgb/grey
-**/*.out
+rgb/rgb
+
+# Generated images / binaries
+*.png
+*.jpg
+*.jpeg
+*.ppm
+*.tiff
+*.tif
+
+# Ignore all RAW files by default
+*.NEF
+
+# But keep this one
+!public/sakura/DSC_5901.NEF
+
+# Ignore csv / dat
+*.csv
+*.dat
+
+# Ignore all txt
+*.txt
+
+# Keep source and scripts
+!*.c
+!*.h
+!*.cpp
+!*.py
+!*.m
+!*.sh
+!*.plt
+!Makefile
