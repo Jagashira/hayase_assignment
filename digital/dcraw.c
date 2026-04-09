@@ -130,6 +130,8 @@ int half_size=0, four_color_rgb=0, document_mode=0, highlight=0;
 int verbose=0, use_auto_wb=0, use_camera_wb=0, use_camera_matrix=1;
 int output_color=1, output_bps=8, output_tiff=0, med_passes=0;
 int no_auto_bright=0;
+static int trace_row=25;
+static int trace_col = 5;
 unsigned greybox[4] = { 0, 0, UINT_MAX, UINT_MAX };
 float cam_mul[4], pre_mul[4], cmatrix[3][4], rgb_cam[3][4];
 const double xyz_rgb[3][3] = {			/* XYZ from RGB */
@@ -1182,6 +1184,97 @@ void CLASS pentax_load_raw()
     }
 }
 
+static void write_u16_le(FILE *fp, unsigned short v)
+{
+  fputc(v & 0xff, fp);
+  fputc((v >> 8) & 0xff, fp);
+}
+
+static void write_u32_le(FILE *fp, unsigned int v)
+{
+  fputc(v & 0xff, fp);
+  fputc((v >> 8) & 0xff, fp);
+  fputc((v >> 16) & 0xff, fp);
+  fputc((v >> 24) & 0xff, fp);
+}
+
+static void write_ifd_entry(FILE *fp, unsigned short tag, unsigned short type,
+                            unsigned int count, unsigned int value)
+{
+  write_u16_le(fp, tag);
+  write_u16_le(fp, type);
+  write_u32_le(fp, count);
+  write_u32_le(fp, value);
+}
+
+static void save_raw_region_tiff(const char *filename,
+                                 int row_start, int row_end,
+                                 int col_start, int col_end)
+{
+  FILE *fp;
+  int row, col;
+  int width, height_out;
+  unsigned int pixel_offset, byte_count;
+  const unsigned short num_entries = 10;
+
+  if (row_start < 0) row_start = 0;
+  if (col_start < 0) col_start = 0;
+  if (row_end > height) row_end = height;
+  if (col_end > raw_width) col_end = raw_width;
+
+  if (row_start >= row_end || col_start >= col_end) {
+    fprintf(stderr, "invalid crop region\n");
+    return;
+  }
+
+  width = col_end - col_start;
+  height_out = row_end - row_start;
+  byte_count = width * height_out * 2;
+
+  fp = fopen(filename, "wb");
+  if (!fp) {
+    fprintf(stderr, "cannot open %s\n", filename);
+    return;
+  }
+
+  /* TIFF header */
+  fputc('I', fp);
+  fputc('I', fp);
+  write_u16_le(fp, 42);
+  write_u32_le(fp, 8);
+
+  /* IFD starts at offset 8 */
+  fseek(fp, 8, SEEK_SET);
+  write_u16_le(fp, num_entries);
+
+  pixel_offset = 8 + 2 + num_entries * 12 + 4;
+
+  /* Tags */
+  write_ifd_entry(fp, 256, 4, 1, width);        /* ImageWidth */
+  write_ifd_entry(fp, 257, 4, 1, height_out);   /* ImageLength */
+  write_ifd_entry(fp, 258, 3, 1, 16);           /* BitsPerSample */
+  write_ifd_entry(fp, 259, 3, 1, 1);            /* Compression = none */
+  write_ifd_entry(fp, 262, 3, 1, 1);            /* Photometric = BlackIsZero */
+  write_ifd_entry(fp, 273, 4, 1, pixel_offset); /* StripOffsets */
+  write_ifd_entry(fp, 277, 3, 1, 1);            /* SamplesPerPixel */
+  write_ifd_entry(fp, 278, 4, 1, height_out);   /* RowsPerStrip */
+  write_ifd_entry(fp, 279, 4, 1, byte_count);   /* StripByteCounts */
+  write_ifd_entry(fp, 284, 3, 1, 1);            /* PlanarConfiguration */
+
+  write_u32_le(fp, 0); /* next IFD = none */
+
+  /* pixel data */
+  fseek(fp, pixel_offset, SEEK_SET);
+  for (row = row_start; row < row_end; row++) {
+    for (col = col_start; col < col_end; col++) {
+      write_u16_le(fp, RAW(row,col));
+    }
+  }
+
+  fclose(fp);
+  fprintf(stderr, "%s written (%dx%d)\n", filename, width, height_out);
+}
+
 void CLASS nikon_load_raw()
 {
   static const uchar nikon_tree[][32] = {
@@ -1273,40 +1366,40 @@ void CLASS nikon_load_raw()
     char color;
 
     /* modeに応じたRAW加工 */
-    if (mode != 0) {
-      for (row = 0; row < height; row++) {
-        for (col = 0; col < raw_width; col++) {
+if (mode != 0) {
+  for (row = 0; row < height; row++) {
+    for (col = 0; col < raw_width; col++) {
 
-          /* RG/GB pattern
-             even row, even col -> R
-             even row, odd  col -> G
-             odd  row, even col -> G
-             odd  row, odd  col -> B
-          */
+      /* RG/GB pattern
+         even row, even col -> R
+         even row, odd  col -> G
+         odd  row, even col -> G
+         odd  row, odd  col -> B
+      */
 
-          if (mode == 1) {
-            /* keep only R */
-            if (!((row % 2 == 0) && (col % 2 == 0))) {
-              RAW(row,col) = 0;
-            }
-          }
-          else if (mode == 2) {
-            /* keep only G */
-            if (!(((row % 2 == 0) && (col % 2 == 1)) ||
-                  ((row % 2 == 1) && (col % 2 == 0)))) {
-              RAW(row,col) = 0;
-            }
-          }
-          else if (mode == 3) {
-            /* keep only B */
-            if (!((row % 2 == 1) && (col % 2 == 1))) {
-              RAW(row,col) = 0;
-            }
-          }
-
+      if (mode == 1) {
+        /* keep only R */
+        if (!((row % 2 == 0) && (col % 2 == 0))) {
+          RAW(row,col) = 0;
         }
       }
+      else if (mode == 2) {
+        /* keep only G */
+        if (!(((row % 2 == 0) && (col % 2 == 1)) ||
+              ((row % 2 == 1) && (col % 2 == 0)))) {
+          RAW(row,col) = 0;
+        }
+      }
+      else if (mode == 3) {
+        /* keep only B */
+        if (!((row % 2 == 1) && (col % 2 == 1))) {
+          RAW(row,col) = 0;
+        }
+      }
+
     }
+  }
+}
 
     /* CSV出力範囲を制限 */
     if (rmax > height) rmax = height;
@@ -1354,6 +1447,8 @@ void CLASS nikon_load_raw()
       fprintf(stderr, "raw_color_value_100x100.csv written\n");
     }
   }
+    /* 20-29 rows, 1-10 cols -> 10x10 TIFF */
+  save_raw_region_tiff("raw_crop_20_29_1_10.tiff", 20, 30, 1, 11);
 
   free (huff);
 }
@@ -9830,6 +9925,7 @@ quit:
 
 void CLASS convert_to_rgb()
 {
+  int trace_hit;
   int row, col, c, i, j, k;
   ushort *img;
   float out[3], out_cam[3][4];
@@ -9914,24 +10010,45 @@ void CLASS convert_to_rgb()
 	for (out_cam[i][j] = k=0; k < 3; k++)
 	  out_cam[i][j] += out_rgb[output_color-1][i][k] * rgb_cam[k][j];
   }
-  if (verbose)
+    if (verbose)
     fprintf (stderr, raw_color ? _("Building histograms...\n") :
-	_("Converting to %s colorspace...\n"), name[output_color-1]);
+        _("Converting to %s colorspace...\n"), name[output_color-1]);
 
   memset (histogram, 0, sizeof histogram);
   for (img=image[0], row=0; row < height; row++)
     for (col=0; col < width; col++, img+=4) {
+
+      int trace_hit = (row == trace_row && col == trace_col);
+
       if (!raw_color) {
-	out[0] = out[1] = out[2] = 0;
-	FORCC {
-	  out[0] += out_cam[0][c] * img[c];
-	  out[1] += out_cam[1][c] * img[c];
-	  out[2] += out_cam[2][c] * img[c];
-	}
-	FORC3 img[c] = CLIP((int) out[c]);
+        if (trace_hit) {
+          fprintf(stderr, "\n[TRACE] convert_to_rgb input at (%d,%d)\n", row, col);
+          fprintf(stderr, "img before matrix = (%u, %u, %u, %u)\n",
+                  img[0], img[1], img[2], img[3]);
+        }
+
+        out[0] = out[1] = out[2] = 0;
+        FORCC {
+          out[0] += out_cam[0][c] * img[c];
+          out[1] += out_cam[1][c] * img[c];
+          out[2] += out_cam[2][c] * img[c];
+        }
+
+        if (trace_hit) {
+          fprintf(stderr, "[TRACE] convert_to_rgb output float = (%f, %f, %f)\n",
+                  out[0], out[1], out[2]);
+        }
+
+        FORC3 img[c] = CLIP((int) out[c]);
+
+        if (trace_hit) {
+          fprintf(stderr, "[TRACE] convert_to_rgb clipped = (%u, %u, %u)\n",
+                  img[0], img[1], img[2]);
+        }
       }
       else if (document_mode)
-	img[0] = img[fcol(row,col)];
+        img[0] = img[fcol(row,col)];
+
       FORCC histogram[c][img[c] >> 3]++;
     }
   if (colors == 4 && output_color) colors = 3;
@@ -10202,6 +10319,18 @@ void CLASS write_ppm_tiff()
   rstep = flip_index (1, 0) - flip_index (0, width);
   for (row=0; row < height; row++, soff += rstep) {
     for (col=0; col < width; col++, soff += cstep)
+          if (row == trace_row && col == trace_col) {
+        fprintf(stderr, "\n[TRACE] final output at (%d,%d)\n", row, col);
+        fprintf(stderr, "16bit before curve = (%u, %u, %u)\n",
+                image[row*width + col][0],
+                image[row*width + col][1],
+                image[row*width + col][2]);
+
+        fprintf(stderr, "8bit after curve = (%u, %u, %u)\n",
+                curve[image[row*width + col][0]] >> 8,
+                curve[image[row*width + col][1]] >> 8,
+                curve[image[row*width + col][2]] >> 8);
+      }
       if (output_bps == 8)
 	   FORCC ppm [col*colors+c] = curve[image[soff][c]] >> 8;
       else FORCC ppm2[col*colors+c] = curve[image[soff][c]];
@@ -10558,29 +10687,68 @@ next:
 #ifdef COLORCHECK
     colorcheck();
 #endif
-    if (is_foveon) {
+        if (is_foveon) {
       if (document_mode || load_raw == &CLASS foveon_dp_load_raw) {
-	for (i=0; i < height*width*4; i++)
-	  if ((short) image[0][i] < 0) image[0][i] = 0;
+        for (i=0; i < height*width*4; i++)
+          if ((short) image[0][i] < 0) image[0][i] = 0;
       } else foveon_interpolate();
     } else if (document_mode < 2)
       scale_colors();
+
     pre_interpolate();
+
+    fprintf(stderr, "\n[TRACE] before interpolation at (%d,%d)\n", trace_row, trace_col);
+    fprintf(stderr, "fcol(center) = %d\n", fcol(trace_row, trace_col));
+
+    fprintf(stderr, "up    (%d,%d): channel=%d value=%u\n",
+            trace_row-1, trace_col,
+            fcol(trace_row-1, trace_col),
+            image[(trace_row-1)*width + trace_col][fcol(trace_row-1, trace_col)]);
+
+    fprintf(stderr, "down  (%d,%d): channel=%d value=%u\n",
+            trace_row+1, trace_col,
+            fcol(trace_row+1, trace_col),
+            image[(trace_row+1)*width + trace_col][fcol(trace_row+1, trace_col)]);
+
+    fprintf(stderr, "left  (%d,%d): channel=%d value=%u\n",
+            trace_row, trace_col-1,
+            fcol(trace_row, trace_col-1),
+            image[trace_row*width + (trace_col-1)][fcol(trace_row, trace_col-1)]);
+
+    fprintf(stderr, "right (%d,%d): channel=%d value=%u\n",
+            trace_row, trace_col+1,
+            fcol(trace_row, trace_col+1),
+            image[trace_row*width + (trace_col+1)][fcol(trace_row, trace_col+1)]);
+
+    fprintf(stderr, "center(%d,%d): channel=%d value=%u\n",
+            trace_row, trace_col,
+            fcol(trace_row, trace_col),
+            image[trace_row*width + trace_col][fcol(trace_row, trace_col)]);
+
     if (filters && !document_mode) {
       if (quality == 0)
-	lin_interpolate();
+        lin_interpolate();
       else if (quality == 1 || colors > 3)
-	vng_interpolate();
+        vng_interpolate();
       else if (quality == 2 && filters > 1000)
-	ppg_interpolate();
+        ppg_interpolate();
       else if (filters == 9)
-	xtrans_interpolate (quality*2-3);
+        xtrans_interpolate (quality*2-3);
       else
-	ahd_interpolate();
+        ahd_interpolate();
     }
+
+    fprintf(stderr, "\n[TRACE] after interpolation at (%d,%d)\n", trace_row, trace_col);
+    fprintf(stderr, "image RGB = (%u, %u, %u, extra=%u)\n",
+            image[trace_row*width + trace_col][0],
+            image[trace_row*width + trace_col][1],
+            image[trace_row*width + trace_col][2],
+            image[trace_row*width + trace_col][3]);
+
     if (mix_green)
       for (colors=3, i=0; i < height*width; i++)
-	image[i][1] = (image[i][1] + image[i][3]) >> 1;
+        image[i][1] = (image[i][1] + image[i][3]) >> 1;
+
     if (!is_foveon && colors == 3) median_filter();
     if (!is_foveon && highlight == 2) blend_highlights();
     if (!is_foveon && highlight > 2) recover_highlights();
