@@ -130,8 +130,8 @@ int half_size=0, four_color_rgb=0, document_mode=0, highlight=0;
 int verbose=0, use_auto_wb=0, use_camera_wb=0, use_camera_matrix=1;
 int output_color=1, output_bps=8, output_tiff=0, med_passes=0;
 int no_auto_bright=0;
-static int trace_row=25;
-static int trace_col = 5;
+static const int trace_row = 25;
+static const int trace_col = 5;
 unsigned greybox[4] = { 0, 0, UINT_MAX, UINT_MAX };
 float cam_mul[4], pre_mul[4], cmatrix[3][4], rgb_cam[3][4];
 const double xyz_rgb[3][3] = {			/* XYZ from RGB */
@@ -176,6 +176,19 @@ struct ph1 {
 #define ULIM(x,y,z) ((y) < (z) ? LIM(x,y,z) : LIM(x,z,y))
 #define CLIP(x) LIM((int)(x),0,65535)
 #define SWAP(a,b) { a=a+b; b=a-b; a=a-b; }
+
+static int trace_point_match (int row, int col)
+{
+  return row == trace_row && col == trace_col;
+}
+
+static void trace_pixel4 (const char *stage, ushort *pix)
+{
+  fprintf (stderr, "\n[TRACE] %s at (%d,%d)\n",
+      stage, trace_row, trace_col);
+  fprintf (stderr, "pixel = (%u, %u, %u, %u)\n",
+      pix[0], pix[1], pix[2], pix[3]);
+}
 
 /*
    In order to inline this calculation, I make the risky
@@ -1000,17 +1013,22 @@ void CLASS canon_sraw_load_raw()
   ip = (short (*)[4]) image;
   rp = ip[0];
   for (row=0; row < height; row++, ip+=width) {
-    if (row & (jh.sraw >> 1))
+    if (row & (jh.sraw >> 1)) {
       for (col=0; col < width; col+=2)
 	for (c=1; c < 3; c++)
-	  if (row == height-1)
+	  if (row == height-1) {
 	       ip[col][c] =  ip[col-width][c];
-	  else ip[col][c] = (ip[col-width][c] + ip[col+width][c] + 1) >> 1;
+	  } else {
+	    ip[col][c] = (ip[col-width][c] + ip[col+width][c] + 1) >> 1;
+	  }
+    }
     for (col=1; col < width; col+=2)
       for (c=1; c < 3; c++)
-	if (col == width-1)
+	if (col == width-1) {
 	     ip[col][c] =  ip[col-1][c];
-	else ip[col][c] = (ip[col-1][c] + ip[col+1][c] + 1) >> 1;
+	} else {
+	  ip[col][c] = (ip[col-1][c] + ip[col+1][c] + 1) >> 1;
+	}
   }
   for ( ; rp < ip[0]; rp+=4) {
     if (unique_id == 0x80000218 ||
@@ -1029,7 +1047,7 @@ void CLASS canon_sraw_load_raw()
       pix[2] = rp[0] + rp[1];
       pix[1] = rp[0] + ((-778*rp[1] - (rp[2] << 11)) >> 12);
     }
-    FORC3 rp[c] = CLIP(pix[c] * sraw_mul[c] >> 10);
+    FORC3 ((ushort *) rp)[c] = CLIP(pix[c] * sraw_mul[c] >> 10);
   }
   ljpeg_end (&jh);
   maximum = 0x3fff;
@@ -1355,6 +1373,16 @@ void CLASS nikon_load_raw()
         derror();
 
       RAW(row,col) = curve[LIM((short)hpred[col & 1],0,0x3fff)];
+
+      if (trace_point_match(row, col)) {
+        char color = "RGBG"[fcol(row,col)];
+        fprintf (stderr, "\n[TRACE] nikon_load_raw decode at (%d,%d)\n", row, col);
+        fprintf (stderr, "huff_index=%d len=%d shl=%d diff=%d min=%d max=%d\n",
+            i, len, shl, diff, min, max);
+        fprintf (stderr, "predictor=%d curve_input=%d raw_color=%c raw_value=%u\n",
+            hpred[col & 1], LIM((short)hpred[col & 1],0,0x3fff),
+            color, RAW(row,col));
+      }
     }
   }
 
@@ -2074,34 +2102,15 @@ void CLASS leaf_hdr_load_raw()
 void CLASS unpacked_load_raw()
 {
   int row, col, bits=0;
-  printf("unpacked_load_raw called\n");
 
   while (1 << ++bits < maximum);
   read_shorts (raw_image, raw_width*raw_height);
-  void CLASS unpacked_load_raw()
-{
-  int row, col, bits=0;
-  unsigned val;
-
-  while (1 << ++bits < maximum);
-  read_shorts (raw_image, raw_width*raw_height);
-
-  for (row=0; row < raw_height; row++) {
-    for (col=0; col < raw_width; col++) {
-      if ((row % 2 == 0) && (col % 2 == 0)) {
-        val = raw_image[row * raw_width + col] * 2;
-        if (val > 65535) val = 65535;
-        raw_image[row * raw_width + col] = val;
-      }
-    }
-  }
 
   for (row=0; row < raw_height; row++)
     for (col=0; col < raw_width; col++)
       if ((RAW(row,col) >>= load_flags) >> bits
         && (unsigned) (row-top_margin) < height
         && (unsigned) (col-left_margin) < width) derror();
-}
 }
 
 void CLASS sinar_4shot_load_raw()
@@ -4489,6 +4498,19 @@ skip_block: ;
     FORC4 fprintf (stderr, " %f", pre_mul[c]);
     fputc ('\n', stderr);
   }
+  if (trace_row >= 0 && trace_row < iheight &&
+      trace_col >= 0 && trace_col < iwidth) {
+    fprintf (stderr, "\n[TRACE] scale_colors params for (%d,%d)\n",
+        trace_row, trace_col);
+    fprintf (stderr, "black=%u dark=%d sat=%d maximum_after_black=%u\n",
+        black, dark, sat, maximum);
+    fprintf (stderr, "cblack = (%u, %u, %u, %u)\n",
+        cblack[0], cblack[1], cblack[2], cblack[3]);
+    fprintf (stderr, "pre_mul(normalized) = (%f, %f, %f, %f)\n",
+        pre_mul[0], pre_mul[1], pre_mul[2], pre_mul[3]);
+    fprintf (stderr, "scale_mul = (%f, %f, %f, %f)\n",
+        scale_mul[0], scale_mul[1], scale_mul[2], scale_mul[3]);
+  }
   if (filters > 1000 && (cblack[4]+1)/2 == 1 && (cblack[5]+1)/2 == 1) {
     FORC4 cblack[FC(c/2,c%2)] +=
 	cblack[6 + c/2 % cblack[4] * cblack[5] + c%2 % cblack[5]];
@@ -4496,12 +4518,39 @@ skip_block: ;
   }
   size = iheight*iwidth;
   for (i=0; i < size*4; i++) {
+    unsigned pixel_index = i / 4;
+    unsigned prow = pixel_index / iwidth;
+    unsigned pcol = pixel_index % iwidth;
+    unsigned chan = i & 3;
+    int black_map = 0;
+
     if (!(val = ((ushort *)image)[i])) continue;
+
     if (cblack[4] && cblack[5])
-      val -= cblack[6 + i/4 / iwidth % cblack[4] * cblack[5] +
+      black_map = cblack[6 + i/4 / iwidth % cblack[4] * cblack[5] +
 			i/4 % iwidth % cblack[5]];
+    if (trace_point_match(prow, pcol)) {
+      fprintf (stderr,
+          "\n[TRACE] scale_colors channel %u at (%u,%u)\n",
+          chan, prow, pcol);
+      fprintf (stderr, "initial=%d black_map=%d cblack[%u]=%u scale_mul=%f\n",
+          val, black_map, chan, cblack[chan], scale_mul[chan]);
+    }
+
+    if (cblack[4] && cblack[5])
+      val -= black_map;
+    if (trace_point_match(prow, pcol)) {
+      fprintf (stderr, "after black_map subtraction=%d\n", val);
+    }
     val -= cblack[i & 3];
+    if (trace_point_match(prow, pcol)) {
+      fprintf (stderr, "after cblack subtraction=%d\n", val);
+    }
     val *= scale_mul[i & 3];
+    if (trace_point_match(prow, pcol)) {
+      fprintf (stderr, "after scale multiply=%d\n", val);
+      fprintf (stderr, "stored=%u\n", CLIP(val));
+    }
     ((ushort *)image)[i] = CLIP(val);
   }
   if ((aber[0] != 1 || aber[2] != 1) && colors == 3) {
@@ -9925,7 +9974,6 @@ quit:
 
 void CLASS convert_to_rgb()
 {
-  int trace_hit;
   int row, col, c, i, j, k;
   ushort *img;
   float out[3], out_cam[3][4];
@@ -10017,16 +10065,9 @@ void CLASS convert_to_rgb()
   memset (histogram, 0, sizeof histogram);
   for (img=image[0], row=0; row < height; row++)
     for (col=0; col < width; col++, img+=4) {
-
-      int trace_hit = (row == trace_row && col == trace_col);
-
       if (!raw_color) {
-        if (trace_hit) {
-          fprintf(stderr, "\n[TRACE] convert_to_rgb input at (%d,%d)\n", row, col);
-          fprintf(stderr, "img before matrix = (%u, %u, %u, %u)\n",
-                  img[0], img[1], img[2], img[3]);
-        }
-
+        ushort before[4];
+        FORC4 before[c] = img[c];
         out[0] = out[1] = out[2] = 0;
         FORCC {
           out[0] += out_cam[0][c] * img[c];
@@ -10034,16 +10075,30 @@ void CLASS convert_to_rgb()
           out[2] += out_cam[2][c] * img[c];
         }
 
-        if (trace_hit) {
-          fprintf(stderr, "[TRACE] convert_to_rgb output float = (%f, %f, %f)\n",
-                  out[0], out[1], out[2]);
+        if (trace_point_match(row, col)) {
+          fprintf (stderr, "\n[TRACE] convert_to_rgb at (%d,%d)\n", row, col);
+          fprintf (stderr, "input = (%u, %u, %u, %u)\n",
+              before[0], before[1], before[2], before[3]);
+          for (c=0; c < colors; c++) {
+            fprintf (stderr,
+                "out[0] += out_cam[0][%d](%.6f) * input[%d](%u) => %.6f\n",
+                c, out_cam[0][c], c, before[c], out_cam[0][c] * before[c]);
+            fprintf (stderr,
+                "out[1] += out_cam[1][%d](%.6f) * input[%d](%u) => %.6f\n",
+                c, out_cam[1][c], c, before[c], out_cam[1][c] * before[c]);
+            fprintf (stderr,
+                "out[2] += out_cam[2][%d](%.6f) * input[%d](%u) => %.6f\n",
+                c, out_cam[2][c], c, before[c], out_cam[2][c] * before[c]);
+          }
+          fprintf (stderr, "matrix sum = (%f, %f, %f)\n",
+              out[0], out[1], out[2]);
         }
 
         FORC3 img[c] = CLIP((int) out[c]);
 
-        if (trace_hit) {
-          fprintf(stderr, "[TRACE] convert_to_rgb clipped = (%u, %u, %u)\n",
-                  img[0], img[1], img[2]);
+        if (trace_point_match(row, col)) {
+          fprintf (stderr, "clipped = (%u, %u, %u)\n",
+              img[0], img[1], img[2]);
         }
       }
       else if (document_mode)
@@ -10318,22 +10373,33 @@ void CLASS write_ppm_tiff()
   cstep = flip_index (0, 1) - soff;
   rstep = flip_index (1, 0) - flip_index (0, width);
   for (row=0; row < height; row++, soff += rstep) {
-    for (col=0; col < width; col++, soff += cstep)
-          if (row == trace_row && col == trace_col) {
-        fprintf(stderr, "\n[TRACE] final output at (%d,%d)\n", row, col);
-        fprintf(stderr, "16bit before curve = (%u, %u, %u)\n",
-                image[row*width + col][0],
-                image[row*width + col][1],
-                image[row*width + col][2]);
+    for (col=0; col < width; col++, soff += cstep) {
+      if (trace_point_match(row, col)) {
+        unsigned out_r, out_g, out_b;
+        double luminance;
 
-        fprintf(stderr, "8bit after curve = (%u, %u, %u)\n",
-                curve[image[row*width + col][0]] >> 8,
-                curve[image[row*width + col][1]] >> 8,
-                curve[image[row*width + col][2]] >> 8);
+        out_r = output_bps == 8 ? curve[image[soff][0]] >> 8 : curve[image[soff][0]];
+        out_g = output_bps == 8 ? curve[image[soff][1]] >> 8 : curve[image[soff][1]];
+        out_b = output_bps == 8 ? curve[image[soff][2]] >> 8 : curve[image[soff][2]];
+        luminance = 0.299 * out_r + 0.587 * out_g + 0.114 * out_b;
+
+        fprintf (stderr, "\n[TRACE] final output at (%d,%d)\n", row, col);
+        fprintf (stderr, "white=%d bright=%f output_bps=%d\n",
+            white, bright, output_bps);
+        fprintf (stderr, "curve input = (%u, %u, %u)\n",
+            image[soff][0], image[soff][1], image[soff][2]);
+        fprintf (stderr, "curve output = (%u, %u, %u)\n",
+            curve[image[soff][0]], curve[image[soff][1]], curve[image[soff][2]]);
+        fprintf (stderr, "written sample = (%u, %u, %u)\n",
+            out_r, out_g, out_b);
+        fprintf (stderr,
+            "luminance = 0.299*R + 0.587*G + 0.114*B = %.3f\n",
+            luminance);
       }
       if (output_bps == 8)
 	   FORCC ppm [col*colors+c] = curve[image[soff][c]] >> 8;
       else FORCC ppm2[col*colors+c] = curve[image[soff][c]];
+    }
     if (output_bps == 16 && !output_tiff && htons(0x55aa) != 0x55aa)
       swab (ppm2, ppm2, width*colors*2);
     fwrite (ppm, colors*output_bps/8, width, ofp);
@@ -10695,35 +10761,43 @@ next:
     } else if (document_mode < 2)
       scale_colors();
 
+    if (trace_point_match(trace_row, trace_col) &&
+        trace_row >= 0 && trace_row < height &&
+        trace_col >= 0 && trace_col < width) {
+      fprintf (stderr, "\n[TRACE] scale_colors result at (%d,%d)\n",
+          trace_row, trace_col);
+      fprintf (stderr, "fcol(center) = %d\n", fcol(trace_row, trace_col));
+      trace_pixel4 ("after scale_colors", image[trace_row*width + trace_col]);
+    }
+
     pre_interpolate();
 
-    fprintf(stderr, "\n[TRACE] before interpolation at (%d,%d)\n", trace_row, trace_col);
-    fprintf(stderr, "fcol(center) = %d\n", fcol(trace_row, trace_col));
-
-    fprintf(stderr, "up    (%d,%d): channel=%d value=%u\n",
-            trace_row-1, trace_col,
-            fcol(trace_row-1, trace_col),
-            image[(trace_row-1)*width + trace_col][fcol(trace_row-1, trace_col)]);
-
-    fprintf(stderr, "down  (%d,%d): channel=%d value=%u\n",
-            trace_row+1, trace_col,
-            fcol(trace_row+1, trace_col),
-            image[(trace_row+1)*width + trace_col][fcol(trace_row+1, trace_col)]);
-
-    fprintf(stderr, "left  (%d,%d): channel=%d value=%u\n",
-            trace_row, trace_col-1,
-            fcol(trace_row, trace_col-1),
-            image[trace_row*width + (trace_col-1)][fcol(trace_row, trace_col-1)]);
-
-    fprintf(stderr, "right (%d,%d): channel=%d value=%u\n",
-            trace_row, trace_col+1,
-            fcol(trace_row, trace_col+1),
-            image[trace_row*width + (trace_col+1)][fcol(trace_row, trace_col+1)]);
-
-    fprintf(stderr, "center(%d,%d): channel=%d value=%u\n",
-            trace_row, trace_col,
-            fcol(trace_row, trace_col),
-            image[trace_row*width + trace_col][fcol(trace_row, trace_col)]);
+    if (trace_point_match(trace_row, trace_col) &&
+        trace_row > 0 && trace_row+1 < height &&
+        trace_col > 0 && trace_col+1 < width) {
+      fprintf (stderr, "\n[TRACE] before interpolation neighborhood at (%d,%d)\n",
+          trace_row, trace_col);
+      fprintf (stderr, "up    (%d,%d): channel=%d value=%u\n",
+          trace_row-1, trace_col,
+          fcol(trace_row-1, trace_col),
+          image[(trace_row-1)*width + trace_col][fcol(trace_row-1, trace_col)]);
+      fprintf (stderr, "down  (%d,%d): channel=%d value=%u\n",
+          trace_row+1, trace_col,
+          fcol(trace_row+1, trace_col),
+          image[(trace_row+1)*width + trace_col][fcol(trace_row+1, trace_col)]);
+      fprintf (stderr, "left  (%d,%d): channel=%d value=%u\n",
+          trace_row, trace_col-1,
+          fcol(trace_row, trace_col-1),
+          image[trace_row*width + (trace_col-1)][fcol(trace_row, trace_col-1)]);
+      fprintf (stderr, "right (%d,%d): channel=%d value=%u\n",
+          trace_row, trace_col+1,
+          fcol(trace_row, trace_col+1),
+          image[trace_row*width + (trace_col+1)][fcol(trace_row, trace_col+1)]);
+      fprintf (stderr, "center(%d,%d): channel=%d value=%u\n",
+          trace_row, trace_col,
+          fcol(trace_row, trace_col),
+          image[trace_row*width + trace_col][fcol(trace_row, trace_col)]);
+    }
 
     if (filters && !document_mode) {
       if (quality == 0)
@@ -10738,12 +10812,11 @@ next:
         ahd_interpolate();
     }
 
-    fprintf(stderr, "\n[TRACE] after interpolation at (%d,%d)\n", trace_row, trace_col);
-    fprintf(stderr, "image RGB = (%u, %u, %u, extra=%u)\n",
-            image[trace_row*width + trace_col][0],
-            image[trace_row*width + trace_col][1],
-            image[trace_row*width + trace_col][2],
-            image[trace_row*width + trace_col][3]);
+    if (trace_point_match(trace_row, trace_col) &&
+        trace_row >= 0 && trace_row < height &&
+        trace_col >= 0 && trace_col < width) {
+      trace_pixel4 ("after interpolation", image[trace_row*width + trace_col]);
+    }
 
     if (mix_green)
       for (colors=3, i=0; i < height*width; i++)
@@ -10764,7 +10837,7 @@ thumbnail:
     else if (output_tiff && write_fun == &CLASS write_ppm_tiff)
       write_ext = ".tiff";
     else
-      write_ext = ".pgm\0.ppm\0.ppm\0.pam" + colors*5-5;
+      write_ext = &".pgm\0.ppm\0.ppm\0.pam"[colors*5-5];
     ofname = (char *) malloc (strlen(ifname) + 64);
     merror (ofname, "main()");
     if (write_to_stdout)
