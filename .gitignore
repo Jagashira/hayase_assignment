@@ -26,7 +26,7 @@ rgb/rgb
 *.tif
 
 # Ignore all RAW files by default
-*.NEF
+# *.NEF
 
 # But keep this one
 !public/sakura/DSC_5901.NEF
