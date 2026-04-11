@@ -130,8 +130,8 @@ int half_size=0, four_color_rgb=0, document_mode=0, highlight=0;
 int verbose=0, use_auto_wb=0, use_camera_wb=0, use_camera_matrix=1;
 int output_color=1, output_bps=8, output_tiff=0, med_passes=0;
 int no_auto_bright=0;
-static const int trace_row = 25;
-static const int trace_col = 5;
+static int trace_row = 25;
+static int trace_col = 5;
 unsigned greybox[4] = { 0, 0, UINT_MAX, UINT_MAX };
 float cam_mul[4], pre_mul[4], cmatrix[3][4], rgb_cam[3][4];
 const double xyz_rgb[3][3] = {			/* XYZ from RGB */
@@ -185,8 +185,8 @@ static int trace_point_match (int row, int col)
 static void trace_pixel4 (const char *stage, ushort *pix)
 {
   fprintf (stderr, "\n[TRACE] %s at (%d,%d)\n",
-      stage, trace_row, trace_col);
-  fprintf (stderr, "pixel = (%u, %u, %u, %u)\n",
+      stage, trace_row+1, trace_col+1);
+  fprintf (stderr, "画素値(pixel) = (%u, %u, %u, %u)\n",
       pix[0], pix[1], pix[2], pix[3]);
 }
 
@@ -264,6 +264,40 @@ int CLASS fcol (int row, int col)
   if (filters == 1) return filter[(row+top_margin)&15][(col+left_margin)&15];
   if (filters == 9) return xtrans[(row+6) % 6][(col+6) % 6];
   return FC(row,col);
+}
+
+static void trace_raw_neighborhood (int center_row, int center_col, int radius)
+{
+  int row, col;
+  int row_start, row_end, col_start, col_end;
+  char color;
+  char cell[32];
+
+  row_start = MAX(0, center_row - radius);
+  row_end = MIN(height - 1, center_row + radius);
+  col_start = MAX(0, center_col - radius);
+  col_end = MIN(raw_width - 1, center_col + radius);
+
+  fprintf (stderr, "\n[TRACE] raw neighborhood table around (%d,%d)\n",
+      center_row+1, center_col+1);
+  fprintf (stderr, "日本語: 選択点の周辺RAW値をBayer配列の並びで表示します。中央が調べたい位置です。\n");
+  fprintf (stderr, "         ");
+  for (col = col_start; col <= col_end; col++)
+    fprintf (stderr, "col%-11d", col+1);
+  fputc ('\n', stderr);
+
+  for (row = row_start; row <= row_end; row++) {
+    fprintf (stderr, "row%-4d  ", row+1);
+    for (col = col_start; col <= col_end; col++) {
+      color = "RGBG"[fcol(row,col)];
+      if (row == center_row && col == center_col)
+        snprintf (cell, sizeof cell, "[%c %u]", color, RAW(row,col));
+      else
+        snprintf (cell, sizeof cell, "%c %u", color, RAW(row,col));
+      fprintf (stderr, "%-13s", cell);
+    }
+    fputc ('\n', stderr);
+  }
 }
 
 #ifndef __GLIBC__
@@ -1376,7 +1410,8 @@ void CLASS nikon_load_raw()
 
       if (trace_point_match(row, col)) {
         char color = "RGBG"[fcol(row,col)];
-        fprintf (stderr, "\n[TRACE] nikon_load_raw decode at (%d,%d)\n", row, col);
+        fprintf (stderr, "\n[TRACE] nikon_load_raw decode at (%d,%d)\n", row+1, col+1);
+        fprintf (stderr, "日本語: NEFの圧縮データを復号して、この点のRAW値を求めています。\n");
         fprintf (stderr, "huff_index=%d len=%d shl=%d diff=%d min=%d max=%d\n",
             i, len, shl, diff, min, max);
         fprintf (stderr, "predictor=%d curve_input=%d raw_color=%c raw_value=%u\n",
@@ -1386,50 +1421,15 @@ void CLASS nikon_load_raw()
     }
   }
 
+  trace_raw_neighborhood (trace_row, trace_col, 2);
+
   /* custom processing + csv output */
   {
     FILE *fp_value, *fp_color_value;
     int rmax = 100, cmax = 100;
-    int mode = 0;   /* 0:no change  1:R only  2:G only  3:B only */
     char color;
 
-    /* modeに応じたRAW加工 */
-if (mode != 0) {
-  for (row = 0; row < height; row++) {
-    for (col = 0; col < raw_width; col++) {
-
-      /* RG/GB pattern
-         even row, even col -> R
-         even row, odd  col -> G
-         odd  row, even col -> G
-         odd  row, odd  col -> B
-      */
-
-      if (mode == 1) {
-        /* keep only R */
-        if (!((row % 2 == 0) && (col % 2 == 0))) {
-          RAW(row,col) = 0;
-        }
-      }
-      else if (mode == 2) {
-        /* keep only G */
-        if (!(((row % 2 == 0) && (col % 2 == 1)) ||
-              ((row % 2 == 1) && (col % 2 == 0)))) {
-          RAW(row,col) = 0;
-        }
-      }
-      else if (mode == 3) {
-        /* keep only B */
-        if (!((row % 2 == 1) && (col % 2 == 1))) {
-          RAW(row,col) = 0;
-        }
-      }
-
-    }
-  }
-}
-
-    /* CSV出力範囲を制限 */
+    /* CSV出力範囲を制限: 復号直後の生RAW値をそのまま書く */
     if (rmax > height) rmax = height;
     if (cmax > raw_width) cmax = raw_width;
 
@@ -1473,6 +1473,14 @@ if (mode != 0) {
 
       fprintf(stderr, "raw_value_100x100.csv written\n");
       fprintf(stderr, "raw_color_value_100x100.csv written\n");
+      if (trace_row < rmax && trace_col < cmax) {
+        fprintf(stderr,
+          "[TRACE] CSV確認: 1始まり座標 row=%d col=%d の raw_value_100x100.csv 相当値 = %u\n",
+          trace_row+1, trace_col+1, RAW(trace_row,trace_col));
+        fprintf(stderr,
+          "[TRACE] CSV確認: 1始まり座標 row=%d col=%d の raw_color_value_100x100.csv 相当値 = %c%u\n",
+          trace_row+1, trace_col+1, "RGBG"[fcol(trace_row,trace_col)], RAW(trace_row,trace_col));
+      }
     }
   }
     /* 20-29 rows, 1-10 cols -> 10x10 TIFF */
@@ -4498,10 +4506,11 @@ skip_block: ;
     FORC4 fprintf (stderr, " %f", pre_mul[c]);
     fputc ('\n', stderr);
   }
-  if (trace_row >= 0 && trace_row < iheight &&
-      trace_col >= 0 && trace_col < iwidth) {
-    fprintf (stderr, "\n[TRACE] scale_colors params for (%d,%d)\n",
-        trace_row, trace_col);
+    if (trace_row >= 0 && trace_row < iheight &&
+        trace_col >= 0 && trace_col < iwidth) {
+      fprintf (stderr, "\n[TRACE] scale_colors params for (%d,%d)\n",
+          trace_row+1, trace_col+1);
+      fprintf (stderr, "日本語: RAW値に黒レベル補正とホワイトバランス係数を掛けるための設定です。\n");
     fprintf (stderr, "black=%u dark=%d sat=%d maximum_after_black=%u\n",
         black, dark, sat, maximum);
     fprintf (stderr, "cblack = (%u, %u, %u, %u)\n",
@@ -4532,7 +4541,8 @@ skip_block: ;
     if (trace_point_match(prow, pcol)) {
       fprintf (stderr,
           "\n[TRACE] scale_colors channel %u at (%u,%u)\n",
-          chan, prow, pcol);
+          chan, prow+1, pcol+1);
+      fprintf (stderr, "日本語: channel %u のRAW値を色補正しています。\n", chan);
       fprintf (stderr, "initial=%d black_map=%d cblack[%u]=%u scale_mul=%f\n",
           val, black_map, chan, cblack[chan], scale_mul[chan]);
     }
@@ -4550,6 +4560,7 @@ skip_block: ;
     if (trace_point_match(prow, pcol)) {
       fprintf (stderr, "after scale multiply=%d\n", val);
       fprintf (stderr, "stored=%u\n", CLIP(val));
+      fprintf (stderr, "日本語: 色補正後の保存値は %u です。\n", CLIP(val));
     }
     ((ushort *)image)[i] = CLIP(val);
   }
@@ -10076,7 +10087,8 @@ void CLASS convert_to_rgb()
         }
 
         if (trace_point_match(row, col)) {
-          fprintf (stderr, "\n[TRACE] convert_to_rgb at (%d,%d)\n", row, col);
+          fprintf (stderr, "\n[TRACE] convert_to_rgb at (%d,%d)\n", row+1, col+1);
+          fprintf (stderr, "日本語: 補間後の値に3x3行列を掛けて、出力用のRGBへ変換します。\n");
           fprintf (stderr, "input = (%u, %u, %u, %u)\n",
               before[0], before[1], before[2], before[3]);
           for (c=0; c < colors; c++) {
@@ -10098,6 +10110,8 @@ void CLASS convert_to_rgb()
 
         if (trace_point_match(row, col)) {
           fprintf (stderr, "clipped = (%u, %u, %u)\n",
+              img[0], img[1], img[2]);
+          fprintf (stderr, "日本語: RGB変換後の値は (%u, %u, %u) です。\n",
               img[0], img[1], img[2]);
         }
       }
@@ -10383,7 +10397,8 @@ void CLASS write_ppm_tiff()
         out_b = output_bps == 8 ? curve[image[soff][2]] >> 8 : curve[image[soff][2]];
         luminance = 0.299 * out_r + 0.587 * out_g + 0.114 * out_b;
 
-        fprintf (stderr, "\n[TRACE] final output at (%d,%d)\n", row, col);
+        fprintf (stderr, "\n[TRACE] final output at (%d,%d)\n", row+1, col+1);
+        fprintf (stderr, "日本語: ここから先の座標表示は1始まりです。\n");
         fprintf (stderr, "white=%d bright=%f output_bps=%d\n",
             white, bright, output_bps);
         fprintf (stderr, "curve input = (%u, %u, %u)\n",
@@ -10395,6 +10410,12 @@ void CLASS write_ppm_tiff()
         fprintf (stderr,
             "luminance = 0.299*R + 0.587*G + 0.114*B = %.3f\n",
             luminance);
+        fprintf (stderr, "日本語: 最終RGB値 = (%u, %u, %u)\n",
+            out_r, out_g, out_b);
+        fprintf (stderr, "日本語: 輝度値 = %.3f\n", luminance);
+        fprintf (stderr,
+            "TRACE_RESULT,row=%d,col=%d,R=%u,G=%u,B=%u,L=%.3f\n",
+            row+1, col+1, out_r, out_g, out_b, luminance);
       }
       if (output_bps == 8)
 	   FORCC ppm [col*colors+c] = curve[image[soff][c]] >> 8;
@@ -10472,14 +10493,15 @@ int CLASS main (int argc, const char **argv)
     puts(_("-6        Write 16-bit instead of 8-bit"));
     puts(_("-4        Linear 16-bit, same as \"-6 -W -g 1 1\""));
     puts(_("-T        Write TIFF instead of PPM"));
+    puts(_("-Z <r c>  Set trace position using 1-based row and column"));
     puts("");
     return 1;
   }
   argv[argc] = "";
   for (arg=1; (((opm = argv[arg][0]) - 2) | 2) == '+'; ) {
     opt = argv[arg++][1];
-    if ((cp = (char *) strchr (sp="nbrkStqmHACg", opt)))
-      for (i=0; i < "114111111422"[cp-sp]-'0'; i++)
+    if ((cp = (char *) strchr (sp="nbrkStqmHACgZ", opt)))
+      for (i=0; i < "1141111114222"[cp-sp]-'0'; i++)
 	if (!isdigit(argv[arg+i][0])) {
 	  fprintf (stderr,_("Non-numeric argument to \"-%c\"\n"), opt);
 	  return 1;
@@ -10533,6 +10555,12 @@ int CLASS main (int argc, const char **argv)
       case 'j':  use_fuji_rotate   = 0;  break;
       case 'W':  no_auto_bright    = 1;  break;
       case 'T':  output_tiff       = 1;  break;
+      case 'Z':
+	 trace_row = atoi(argv[arg++]) - 1;
+	 trace_col = atoi(argv[arg++]) - 1;
+	 if (trace_row < 0) trace_row = 0;
+	 if (trace_col < 0) trace_col = 0;
+	 break;
       case '4':  gamm[0] = gamm[1] =
 		 no_auto_bright    = 1;
       case '6':  output_bps       = 16;  break;
@@ -10765,8 +10793,9 @@ next:
         trace_row >= 0 && trace_row < height &&
         trace_col >= 0 && trace_col < width) {
       fprintf (stderr, "\n[TRACE] scale_colors result at (%d,%d)\n",
-          trace_row, trace_col);
+          trace_row+1, trace_col+1);
       fprintf (stderr, "fcol(center) = %d\n", fcol(trace_row, trace_col));
+      fprintf (stderr, "日本語: 色補正後の中心画素です。\n");
       trace_pixel4 ("after scale_colors", image[trace_row*width + trace_col]);
     }
 
@@ -10776,25 +10805,26 @@ next:
         trace_row > 0 && trace_row+1 < height &&
         trace_col > 0 && trace_col+1 < width) {
       fprintf (stderr, "\n[TRACE] before interpolation neighborhood at (%d,%d)\n",
-          trace_row, trace_col);
+          trace_row+1, trace_col+1);
+      fprintf (stderr, "日本語: 補間前の周囲画素です。ここから不足している色を推定します。\n");
       fprintf (stderr, "up    (%d,%d): channel=%d value=%u\n",
-          trace_row-1, trace_col,
+          trace_row, trace_col+1,
           fcol(trace_row-1, trace_col),
           image[(trace_row-1)*width + trace_col][fcol(trace_row-1, trace_col)]);
       fprintf (stderr, "down  (%d,%d): channel=%d value=%u\n",
-          trace_row+1, trace_col,
+          trace_row+2, trace_col+1,
           fcol(trace_row+1, trace_col),
           image[(trace_row+1)*width + trace_col][fcol(trace_row+1, trace_col)]);
       fprintf (stderr, "left  (%d,%d): channel=%d value=%u\n",
-          trace_row, trace_col-1,
+          trace_row+1, trace_col,
           fcol(trace_row, trace_col-1),
           image[trace_row*width + (trace_col-1)][fcol(trace_row, trace_col-1)]);
       fprintf (stderr, "right (%d,%d): channel=%d value=%u\n",
-          trace_row, trace_col+1,
+          trace_row+1, trace_col+2,
           fcol(trace_row, trace_col+1),
           image[trace_row*width + (trace_col+1)][fcol(trace_row, trace_col+1)]);
       fprintf (stderr, "center(%d,%d): channel=%d value=%u\n",
-          trace_row, trace_col,
+          trace_row+1, trace_col+1,
           fcol(trace_row, trace_col),
           image[trace_row*width + trace_col][fcol(trace_row, trace_col)]);
     }
@@ -10815,7 +10845,19 @@ next:
     if (trace_point_match(trace_row, trace_col) &&
         trace_row >= 0 && trace_row < height &&
         trace_col >= 0 && trace_col < width) {
+      double raw_luminance;
+      ushort *raw_rgb;
+
+      raw_rgb = image[trace_row*width + trace_col];
+      raw_luminance = 0.299 * raw_rgb[0] + 0.587 * raw_rgb[1] + 0.114 * raw_rgb[2];
+      fprintf (stderr, "日本語: 補間後、RGBがそろった中心画素です。\n");
       trace_pixel4 ("after interpolation", image[trace_row*width + trace_col]);
+      fprintf (stderr, "日本語: 色変換前RAW RGB値 = (%u, %u, %u)\n",
+          raw_rgb[0], raw_rgb[1], raw_rgb[2]);
+      fprintf (stderr, "日本語: 色変換前RAW輝度値 = %.3f\n", raw_luminance);
+      fprintf (stderr,
+          "TRACE_RAW_RESULT,row=%d,col=%d,R=%u,G=%u,B=%u,L=%.3f\n",
+          trace_row+1, trace_col+1, raw_rgb[0], raw_rgb[1], raw_rgb[2], raw_luminance);
     }
 
     if (mix_green)

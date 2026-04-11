@@ -12,6 +12,12 @@ Thumbs.db
 a.out
 *.o
 *.out
+bin/
+output/
+digital/__pycache__/
+digital/export_nef_metadata
+digital/extract_shutter_rgb/
+digital/extract_shutter_rgb
 
 # executables
 rgb/grey
