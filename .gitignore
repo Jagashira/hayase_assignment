@@ -13,6 +13,8 @@ a.out
 *.o
 *.out
 bin/
+obj/
+.vs/
 output/
 digital/__pycache__/
 digital/export_nef_metadata
@@ -48,6 +50,9 @@ rgb/rgb
 !*.c
 !*.h
 !*.cpp
+!*.cs
+!*.csproj
+!*.sln
 !*.py
 !*.m
 !*.sh
