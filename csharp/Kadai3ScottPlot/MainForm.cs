@@ -301,8 +301,15 @@ public sealed class MainForm : Form
 
     private static double SafeTan(double x)
     {
-        double value = Math.Tan(x);
-        return Math.Abs(value) > 20 ? double.NaN : value;
+        double shifted = x - (Math.PI / 2);
+        double distanceFromAsymptote = Math.Abs(shifted - (Math.Round(shifted / Math.PI) * Math.PI));
+
+        if (distanceFromAsymptote <= 0.01)
+        {
+            return double.NaN;
+        }
+
+        return Math.Tan(x);
     }
 
     private sealed record PlotMode(
