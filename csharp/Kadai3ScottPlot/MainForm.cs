@@ -37,11 +37,11 @@ public sealed class MainForm : Form
     private readonly List<double> _series2Values = new();
     private readonly PlotMode[] _plotModes =
     {
-        new("Sin vs Cos", "sin(x)", "cos(x)", x => Math.Sin(x), x => Math.Cos(x), -1.15, 1.15, false),
-        new("Sin vs Sin(2x)", "sin(x)", "sin(2x)", x => Math.Sin(x), x => Math.Sin(2 * x), -1.15, 1.15, false),
-        new("Sin vs Damped Sin", "sin(x)", "e^(-0.12x)sin(3x)", x => Math.Sin(x), x => Math.Exp(-0.12 * x) * Math.Sin(3 * x), -1.15, 1.15, false),
-        new("Exp vs Exp Decay", "e^(0.12x)", "e^(-0.12x)", x => Math.Exp(0.12 * x), x => Math.Exp(-0.12 * x), 0, 8, false),
-        new("Tan vs Sin", "tan(x)", "sin(x)", SafeTan, x => Math.Sin(x), -3.2, 3.2, true),
+        new("Sin vs Cos", "sin(x)", "cos(x)", x => Math.Sin(x), x => Math.Cos(x), -1.15, 1.15, false, false),
+        new("Sin vs Sin(2x)", "sin(x)", "sin(2x)", x => Math.Sin(x), x => Math.Sin(2 * x), -1.15, 1.15, false, false),
+        new("Sin vs Damped Sin", "sin(x)", "e^(-0.12x)sin(3x)", x => Math.Sin(x), x => Math.Exp(-0.12 * x) * Math.Sin(3 * x), -1.15, 1.15, false, false),
+        new("Exp vs Exp Decay", "e^(0.12x)", "e^(-0.12x)", x => Math.Exp(0.12 * x), x => Math.Exp(-0.12 * x), 0, 8, false, false),
+        new("Tan vs Sin", "tan(x)", "sin(x)", SafeTan, x => Math.Sin(x), -40, 40, true, true),
     };
 
     private double _currentX;
@@ -333,6 +333,11 @@ public sealed class MainForm : Form
 
     private (double MinY, double MaxY) GetYAxisLimits()
     {
+        if (_selectedMode.UseFixedYAxis)
+        {
+            return (_selectedMode.MinY, _selectedMode.MaxY);
+        }
+
         var finiteValues = _series1Values
             .Concat(_series2Values)
             .Where(value => !double.IsNaN(value) && !double.IsInfinity(value))
@@ -372,5 +377,6 @@ public sealed class MainForm : Form
         Func<double, double> Series2,
         double MinY,
         double MaxY,
-        bool SplitAtNaN);
+        bool SplitAtNaN,
+        bool UseFixedYAxis);
 }
