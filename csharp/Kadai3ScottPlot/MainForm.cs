@@ -36,11 +36,11 @@ public sealed class MainForm : Form
     private readonly List<double> _series2Values = new();
     private readonly PlotMode[] _plotModes =
     {
-        new("Sin vs Cos", "sin(x)", "cos(x)", x => Math.Sin(x), x => Math.Cos(x), -1.15, 1.15, true, 0),
-        new("Sin vs Sin(2x)", "sin(x)", "sin(2x)", x => Math.Sin(x), x => Math.Sin(2 * x), -1.15, 1.15, true, 0),
-        new("Sin vs Damped Sin", "sin(x)", "e^(-0.12x)sin(3x)", x => Math.Sin(x), x => Math.Exp(-0.12 * x) * Math.Sin(3 * x), -1.15, 1.15, true, 0),
-        new("Exp vs Exp Decay", "e^(0.12x)", "e^(-0.12x)", x => Math.Exp(0.12 * x), x => Math.Exp(-0.12 * x), 0, 8, true, 0),
-        new("Tan vs Sin", "tan(x)", "sin(x)", SafeTan, x => Math.Sin(x), -3.2, 3.2, false, 3),
+        new("Sin vs Cos", "sin(x)", "cos(x)", x => Math.Sin(x), x => Math.Cos(x), -1.15, 1.15, false),
+        new("Sin vs Sin(2x)", "sin(x)", "sin(2x)", x => Math.Sin(x), x => Math.Sin(2 * x), -1.15, 1.15, false),
+        new("Sin vs Damped Sin", "sin(x)", "e^(-0.12x)sin(3x)", x => Math.Sin(x), x => Math.Exp(-0.12 * x) * Math.Sin(3 * x), -1.15, 1.15, false),
+        new("Exp vs Exp Decay", "e^(0.12x)", "e^(-0.12x)", x => Math.Exp(0.12 * x), x => Math.Exp(-0.12 * x), 0, 8, false),
+        new("Tan vs Sin", "tan(x)", "sin(x)", SafeTan, x => Math.Sin(x), -3.2, 3.2, true),
     };
 
     private double _currentX;
@@ -217,15 +217,8 @@ public sealed class MainForm : Form
             var series1Ys = _series1Values.ToArray();
             var series2Ys = _series2Values.ToArray();
 
-            var line1 = _formsPlot.Plot.Add.Scatter(xs, series1Ys);
-            line1.LineWidth = _selectedMode.DrawLines ? 2 : 0;
-            line1.Color = ScottPlot.Colors.DodgerBlue;
-            line1.MarkerSize = _selectedMode.MarkerSize;
-
-            var line2 = _formsPlot.Plot.Add.Scatter(xs, series2Ys);
-            line2.LineWidth = _selectedMode.DrawLines ? 2 : 0;
-            line2.Color = ScottPlot.Colors.Orange;
-            line2.MarkerSize = _selectedMode.MarkerSize;
+            AddSeries(xs, series1Ys, ScottPlot.Colors.DodgerBlue);
+            AddSeries(xs, series2Ys, ScottPlot.Colors.Orange);
 
             var cursor = _formsPlot.Plot.Add.VerticalLine(_currentX, 2, ScottPlot.Colors.LimeGreen);
             cursor.LinePattern = ScottPlot.LinePattern.Solid;
@@ -246,6 +239,64 @@ public sealed class MainForm : Form
         _currentValueLabel.Left = parent.ClientSize.Width - _currentValueLabel.Width - 22;
         _currentValueLabel.Top = parent.ClientSize.Height - _currentValueLabel.Height - 16;
         _currentValueLabel.BringToFront();
+    }
+
+    private void AddSeries(double[] xs, double[] ys, ScottPlot.Color color)
+    {
+        if (_selectedMode.SplitAtNaN)
+        {
+            foreach ((double[] segmentXs, double[] segmentYs) in GetFiniteSegments(xs, ys))
+            {
+                AddScatterLine(segmentXs, segmentYs, color);
+            }
+
+            return;
+        }
+
+        AddScatterLine(xs, ys, color);
+    }
+
+    private void AddScatterLine(double[] xs, double[] ys, ScottPlot.Color color)
+    {
+        if (xs.Length == 0)
+        {
+            return;
+        }
+
+        var scatter = _formsPlot.Plot.Add.Scatter(xs, ys);
+        scatter.LineWidth = 2;
+        scatter.Color = color;
+        scatter.MarkerSize = 0;
+    }
+
+    private static IEnumerable<(double[] Xs, double[] Ys)> GetFiniteSegments(double[] xs, double[] ys)
+    {
+        var segmentXs = new List<double>();
+        var segmentYs = new List<double>();
+
+        for (int i = 0; i < xs.Length; i++)
+        {
+            bool isFinite = !double.IsNaN(ys[i]) && !double.IsInfinity(ys[i]);
+
+            if (isFinite)
+            {
+                segmentXs.Add(xs[i]);
+                segmentYs.Add(ys[i]);
+                continue;
+            }
+
+            if (segmentXs.Count > 0)
+            {
+                yield return (segmentXs.ToArray(), segmentYs.ToArray());
+                segmentXs.Clear();
+                segmentYs.Clear();
+            }
+        }
+
+        if (segmentXs.Count > 0)
+        {
+            yield return (segmentXs.ToArray(), segmentYs.ToArray());
+        }
     }
 
     private Button CreateSpeedButton(string text, double speedMultiplier)
@@ -320,6 +371,5 @@ public sealed class MainForm : Form
         Func<double, double> Series2,
         double MinY,
         double MaxY,
-        bool DrawLines,
-        float MarkerSize);
+        bool SplitAtNaN);
 }
