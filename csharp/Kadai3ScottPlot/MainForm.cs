@@ -15,16 +15,20 @@ namespace Kadai3ScottPlot;
 
 public sealed class MainForm : Form
 {
-    private const double StepX = 0.02;
-    private const int TimerIntervalMs = 60;
+    private const int TimerIntervalMs = 50;
     private const double InitialAxisMaxX = 10.0;
 
     private readonly FormsPlot _formsPlot;
     private readonly FormsTimer _timer;
     private readonly FormsLabel _currentValueLabel;
+    private readonly FormsLabel _speedLabel;
     private readonly Button _startButton;
     private readonly Button _stopButton;
     private readonly Button _resetButton;
+    private readonly Button _halfSpeedButton;
+    private readonly Button _normalSpeedButton;
+    private readonly Button _fastSpeedButton;
+    private readonly Button _fasterSpeedButton;
     private readonly ComboBox _modeComboBox;
 
     private readonly List<double> _xValues = new();
@@ -40,6 +44,7 @@ public sealed class MainForm : Form
     };
 
     private double _currentX;
+    private double _speedMultiplier;
     private PlotMode _selectedMode;
 
     public MainForm()
@@ -82,6 +87,11 @@ public sealed class MainForm : Form
         };
         _resetButton.Click += (_, _) => ResetAndRender();
 
+        _halfSpeedButton = CreateSpeedButton("0.5x", 0.5);
+        _normalSpeedButton = CreateSpeedButton("1.0x", 1.0);
+        _fastSpeedButton = CreateSpeedButton("1.7x", 1.7);
+        _fasterSpeedButton = CreateSpeedButton("3.0x", 3.0);
+
         _modeComboBox = new ComboBox
         {
             Width = 220,
@@ -97,9 +107,20 @@ public sealed class MainForm : Form
             _timer.Start();
         };
 
+        _speedLabel = new FormsLabel
+        {
+            AutoSize = true,
+            Margin = new Padding(12, 8, 0, 0),
+        };
+
         topPanel.Controls.Add(_startButton);
         topPanel.Controls.Add(_stopButton);
         topPanel.Controls.Add(_resetButton);
+        topPanel.Controls.Add(_halfSpeedButton);
+        topPanel.Controls.Add(_normalSpeedButton);
+        topPanel.Controls.Add(_fastSpeedButton);
+        topPanel.Controls.Add(_fasterSpeedButton);
+        topPanel.Controls.Add(_speedLabel);
         topPanel.Controls.Add(_modeComboBox);
 
         var plotHost = new Panel
@@ -139,8 +160,10 @@ public sealed class MainForm : Form
         };
         _timer.Tick += (_, _) => AdvancePlot();
 
+        _speedMultiplier = 1.0;
         _selectedMode = _plotModes[0];
         _modeComboBox.SelectedIndex = 0;
+        UpdateSpeedButtons();
         ConfigurePlot();
         ResetAndRender();
         _timer.Start();
@@ -171,7 +194,7 @@ public sealed class MainForm : Form
 
     private void AdvancePlot()
     {
-        _currentX += StepX;
+        _currentX += (_timer.Interval / 1000.0) * _speedMultiplier;
         AppendCurrentPoint();
 
         RenderPlot();
@@ -222,6 +245,37 @@ public sealed class MainForm : Form
         _currentValueLabel.Left = parent.ClientSize.Width - _currentValueLabel.Width - 22;
         _currentValueLabel.Top = parent.ClientSize.Height - _currentValueLabel.Height - 16;
         _currentValueLabel.BringToFront();
+    }
+
+    private Button CreateSpeedButton(string text, double speedMultiplier)
+    {
+        var button = new Button
+        {
+            Text = text,
+            Width = 70,
+            Height = 32,
+        };
+        button.Click += (_, _) =>
+        {
+            _speedMultiplier = speedMultiplier;
+            UpdateSpeedButtons();
+        };
+        return button;
+    }
+
+    private void UpdateSpeedButtons()
+    {
+        UpdateSpeedButtonStyle(_halfSpeedButton, 0.5);
+        UpdateSpeedButtonStyle(_normalSpeedButton, 1.0);
+        UpdateSpeedButtonStyle(_fastSpeedButton, 1.7);
+        UpdateSpeedButtonStyle(_fasterSpeedButton, 3.0);
+        _speedLabel.Text = $"速度: {_speedMultiplier:0.0}x";
+    }
+
+    private void UpdateSpeedButtonStyle(Button button, double speedMultiplier)
+    {
+        bool isActive = Math.Abs(_speedMultiplier - speedMultiplier) < 0.001;
+        button.BackColor = isActive ? DrawingColor.FromArgb(220, 240, 255) : SystemColors.Control;
     }
 
     private static double SafeTan(double x)
