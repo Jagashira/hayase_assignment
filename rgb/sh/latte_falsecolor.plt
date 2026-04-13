@@ -1,4 +1,4 @@
-set terminal pngcairo size 1600,800 enhanced font "Helvetica,14"
+set terminal pngcairo size 900,900 enhanced font "Helvetica,14"
 set output OUTPUT
 
 if (!exists("MODE")) MODE = 4
@@ -9,7 +9,7 @@ title_text = (MODE == 1 ? "Condition 1: r > g > b" : \
              MODE == 2 ? "Condition 2: r > g > b + range filters" : \
              MODE == 3 ? "Condition 3: 5 brown points + 5 gray points" : \
                          "Condition 4: 15 brown points + 5 gray points")
-set multiplot layout 1,2 title title_text
+set title title_text
 
 set size ratio -1
 set view map
@@ -75,12 +75,7 @@ selected(r,g,b) = (MODE == 1 ? is_brown1(r,g,b) : \
                    MODE == 2 ? is_brown2(r,g,b) : \
                    MODE == 3 ? is_brown3(r,g,b) : \
                                is_brown4(r,g,b))
+cyan = rgb(120,220,255)
+plot INPUT using 2:1:(selected($3,$4,$5) ? cyan : rgb($3,$4,$5)) with rgbimage
 
-set title "Original"
-plot INPUT using 2:1:(rgb($3,$4,$5)) with rgbimage
-
-set title "Brown -> Black"
-plot INPUT using 2:1:(selected($3,$4,$5) ? rgb(0,0,0) : rgb($3,$4,$5)) with rgbimage
-
-unset multiplot
 unset output
