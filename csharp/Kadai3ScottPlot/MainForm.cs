@@ -14,7 +14,7 @@ namespace Kadai3ScottPlot;
 
 public sealed class MainForm : Form
 {
-    private const double StepX = 0.1;
+    private const double StepX = 0.02;
     private const int TimerIntervalMs = 100;
     private const double InitialAxisMaxX = 10.0;
 
@@ -71,17 +71,9 @@ public sealed class MainForm : Form
         };
         _resetButton.Click += (_, _) => ResetAndRender();
 
-        var descriptionLabel = new FormsLabel
-        {
-            AutoSize = true,
-            Text = "タイマーで x を 0.1 ずつ増やし、sin(x) / cos(x) を定期描画します。",
-            Margin = new Padding(20, 8, 0, 0),
-        };
-
         topPanel.Controls.Add(_startButton);
         topPanel.Controls.Add(_stopButton);
         topPanel.Controls.Add(_resetButton);
-        topPanel.Controls.Add(descriptionLabel);
 
         var plotHost = new Panel
         {
@@ -127,7 +119,7 @@ public sealed class MainForm : Form
 
     private void ConfigurePlot()
     {
-        _formsPlot.Plot.Title("Timer + ScottPlot Sample");
+        _formsPlot.Plot.Title("Sin vs Cos");
         _formsPlot.Plot.XLabel("X");
         _formsPlot.Plot.YLabel("Y");
         _formsPlot.Plot.Axes.Right.IsVisible = false;
@@ -176,10 +168,12 @@ public sealed class MainForm : Form
             var sinScatter = _formsPlot.Plot.Add.Scatter(xs, sinYs);
             sinScatter.LineWidth = 2;
             sinScatter.Color = ScottPlot.Colors.DodgerBlue;
+            sinScatter.MarkerSize = 0;
 
             var cosScatter = _formsPlot.Plot.Add.Scatter(xs, cosYs);
             cosScatter.LineWidth = 2;
             cosScatter.Color = ScottPlot.Colors.Orange;
+            cosScatter.MarkerSize = 0;
 
             var cursor = _formsPlot.Plot.Add.VerticalLine(_currentX, 2, ScottPlot.Colors.LimeGreen);
             cursor.LinePattern = ScottPlot.LinePattern.Solid;
