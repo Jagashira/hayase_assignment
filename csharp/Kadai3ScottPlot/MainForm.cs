@@ -36,11 +36,11 @@ public sealed class MainForm : Form
     private readonly List<double> _series2Values = new();
     private readonly PlotMode[] _plotModes =
     {
-        new("Sin vs Cos", "sin(x)", "cos(x)", x => Math.Sin(x), x => Math.Cos(x), -1.15, 1.15),
-        new("Sin vs Sin(2x)", "sin(x)", "sin(2x)", x => Math.Sin(x), x => Math.Sin(2 * x), -1.15, 1.15),
-        new("Sin vs Damped Sin", "sin(x)", "e^(-0.12x)sin(3x)", x => Math.Sin(x), x => Math.Exp(-0.12 * x) * Math.Sin(3 * x), -1.15, 1.15),
-        new("Exp vs Exp Decay", "e^(0.12x)", "e^(-0.12x)", x => Math.Exp(0.12 * x), x => Math.Exp(-0.12 * x), 0, 8),
-        new("Tan vs Sin", "tan(x)", "sin(x)", SafeTan, x => Math.Sin(x), -3.2, 3.2),
+        new("Sin vs Cos", "sin(x)", "cos(x)", x => Math.Sin(x), x => Math.Cos(x), -1.15, 1.15, true, 0),
+        new("Sin vs Sin(2x)", "sin(x)", "sin(2x)", x => Math.Sin(x), x => Math.Sin(2 * x), -1.15, 1.15, true, 0),
+        new("Sin vs Damped Sin", "sin(x)", "e^(-0.12x)sin(3x)", x => Math.Sin(x), x => Math.Exp(-0.12 * x) * Math.Sin(3 * x), -1.15, 1.15, true, 0),
+        new("Exp vs Exp Decay", "e^(0.12x)", "e^(-0.12x)", x => Math.Exp(0.12 * x), x => Math.Exp(-0.12 * x), 0, 8, true, 0),
+        new("Tan vs Sin", "tan(x)", "sin(x)", SafeTan, x => Math.Sin(x), -3.2, 3.2, false, 3),
     };
 
     private double _currentX;
@@ -218,14 +218,14 @@ public sealed class MainForm : Form
             var series2Ys = _series2Values.ToArray();
 
             var line1 = _formsPlot.Plot.Add.Scatter(xs, series1Ys);
-            line1.LineWidth = 2;
+            line1.LineWidth = _selectedMode.DrawLines ? 2 : 0;
             line1.Color = ScottPlot.Colors.DodgerBlue;
-            line1.MarkerSize = 0;
+            line1.MarkerSize = _selectedMode.MarkerSize;
 
             var line2 = _formsPlot.Plot.Add.Scatter(xs, series2Ys);
-            line2.LineWidth = 2;
+            line2.LineWidth = _selectedMode.DrawLines ? 2 : 0;
             line2.Color = ScottPlot.Colors.Orange;
-            line2.MarkerSize = 0;
+            line2.MarkerSize = _selectedMode.MarkerSize;
 
             var cursor = _formsPlot.Plot.Add.VerticalLine(_currentX, 2, ScottPlot.Colors.LimeGreen);
             cursor.LinePattern = ScottPlot.LinePattern.Solid;
@@ -319,5 +319,7 @@ public sealed class MainForm : Form
         Func<double, double> Series1,
         Func<double, double> Series2,
         double MinY,
-        double MaxY);
+        double MaxY,
+        bool DrawLines,
+        float MarkerSize);
 }
