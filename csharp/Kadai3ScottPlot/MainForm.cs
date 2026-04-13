@@ -17,6 +17,7 @@ public sealed class MainForm : Form
 {
     private const int TimerIntervalMs = 50;
     private const double InitialAxisMaxX = 10.0;
+    private const double TanAsymptoteClipWidth = 0.03;
 
     private readonly FormsPlot _formsPlot;
     private readonly FormsTimer _timer;
@@ -355,7 +356,7 @@ public sealed class MainForm : Form
         double shifted = x - (Math.PI / 2);
         double distanceFromAsymptote = Math.Abs(shifted - (Math.Round(shifted / Math.PI) * Math.PI));
 
-        if (distanceFromAsymptote <= 0.01)
+        if (distanceFromAsymptote <= TanAsymptoteClipWidth)
         {
             return double.NaN;
         }
