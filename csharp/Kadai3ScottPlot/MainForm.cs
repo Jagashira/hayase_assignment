@@ -4,6 +4,8 @@ using System.Drawing;
 using System.Windows.Forms;
 using ScottPlot;
 using ScottPlot.WinForms;
+using FormsLabel = System.Windows.Forms.Label;
+using FormsTimer = System.Windows.Forms.Timer;
 
 namespace Kadai3ScottPlot;
 
@@ -14,8 +16,8 @@ public sealed class MainForm : Form
     private const double InitialAxisMaxX = 10.0;
 
     private readonly FormsPlot _formsPlot;
-    private readonly Timer _timer;
-    private readonly Label _currentValueLabel;
+    private readonly FormsTimer _timer;
+    private readonly FormsLabel _currentValueLabel;
     private readonly Button _startButton;
     private readonly Button _stopButton;
     private readonly Button _resetButton;
@@ -66,7 +68,7 @@ public sealed class MainForm : Form
         };
         _resetButton.Click += (_, _) => ResetAndRender();
 
-        var descriptionLabel = new Label
+        var descriptionLabel = new FormsLabel
         {
             AutoSize = true,
             Text = "タイマーで x を 0.1 ずつ増やし、sin(x) / cos(x) を定期描画します。",
@@ -90,7 +92,7 @@ public sealed class MainForm : Form
             Dock = DockStyle.Fill,
         };
 
-        _currentValueLabel = new Label
+        _currentValueLabel = new FormsLabel
         {
             AutoSize = false,
             Width = 86,
@@ -109,7 +111,7 @@ public sealed class MainForm : Form
         Controls.Add(plotHost);
         Controls.Add(topPanel);
 
-        _timer = new Timer
+        _timer = new FormsTimer
         {
             Interval = TimerIntervalMs,
         };
