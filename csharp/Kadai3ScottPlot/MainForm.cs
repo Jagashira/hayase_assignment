@@ -1,9 +1,12 @@
 using System;
 using System.Collections.Generic;
-using System.Drawing;
 using System.Windows.Forms;
-using ScottPlot;
 using ScottPlot.WinForms;
+using DrawingContentAlignment = System.Drawing.ContentAlignment;
+using DrawingColor = System.Drawing.Color;
+using DrawingFont = System.Drawing.Font;
+using DrawingFontStyle = System.Drawing.FontStyle;
+using DrawingSize = System.Drawing.Size;
 using FormsLabel = System.Windows.Forms.Label;
 using FormsTimer = System.Windows.Forms.Timer;
 
@@ -32,8 +35,8 @@ public sealed class MainForm : Form
     {
         Text = "課題3 Windows Programing + ScottPlot";
         StartPosition = FormStartPosition.CenterScreen;
-        MinimumSize = new Size(960, 640);
-        ClientSize = new Size(1100, 700);
+        MinimumSize = new DrawingSize(960, 640);
+        ClientSize = new DrawingSize(1100, 700);
 
         var topPanel = new FlowLayoutPanel
         {
@@ -41,7 +44,7 @@ public sealed class MainForm : Form
             Height = 56,
             FlowDirection = FlowDirection.LeftToRight,
             Padding = new Padding(12, 10, 12, 10),
-            BackColor = Color.FromArgb(245, 245, 245),
+            BackColor = DrawingColor.FromArgb(245, 245, 245),
         };
 
         _startButton = new Button
@@ -84,7 +87,7 @@ public sealed class MainForm : Form
         {
             Dock = DockStyle.Fill,
             Padding = new Padding(18, 12, 18, 18),
-            BackColor = Color.White,
+            BackColor = DrawingColor.White,
         };
 
         _formsPlot = new FormsPlot
@@ -97,10 +100,10 @@ public sealed class MainForm : Form
             AutoSize = false,
             Width = 86,
             Height = 34,
-            TextAlign = ContentAlignment.MiddleCenter,
-            Font = new Font("Segoe UI", 11, FontStyle.Bold),
-            BackColor = Color.FromArgb(35, 182, 63),
-            ForeColor = Color.White,
+            TextAlign = DrawingContentAlignment.MiddleCenter,
+            Font = new DrawingFont("Segoe UI", 11, DrawingFontStyle.Bold),
+            BackColor = DrawingColor.FromArgb(35, 182, 63),
+            ForeColor = DrawingColor.White,
             Anchor = AnchorStyles.Right | AnchorStyles.Bottom,
         };
 
@@ -125,12 +128,10 @@ public sealed class MainForm : Form
     private void ConfigurePlot()
     {
         _formsPlot.Plot.Title("Timer + ScottPlot Sample");
-        _formsPlot.Plot.Axes.Bottom.Label.Text = "X";
-        _formsPlot.Plot.Axes.Left.Label.Text = "Y";
+        _formsPlot.Plot.XLabel("X");
+        _formsPlot.Plot.YLabel("Y");
         _formsPlot.Plot.Axes.Right.IsVisible = false;
         _formsPlot.Plot.Axes.Top.IsVisible = false;
-        _formsPlot.Plot.Grid.MajorLineColor = Colors.Gray.WithAlpha(0.20);
-        _formsPlot.Plot.Grid.MinorLineColor = Colors.Gray.WithAlpha(0.08);
         _formsPlot.Interaction.Enable();
     }
 
@@ -173,22 +174,19 @@ public sealed class MainForm : Form
             var cosYs = _cosValues.ToArray();
 
             var sinScatter = _formsPlot.Plot.Add.Scatter(xs, sinYs);
-            sinScatter.LegendText = "sin(x)";
             sinScatter.LineWidth = 2;
-            sinScatter.Color = Colors.DodgerBlue;
+            sinScatter.Color = ScottPlot.Colors.DodgerBlue;
 
             var cosScatter = _formsPlot.Plot.Add.Scatter(xs, cosYs);
-            cosScatter.LegendText = "cos(x)";
             cosScatter.LineWidth = 2;
-            cosScatter.Color = Colors.Orange;
+            cosScatter.Color = ScottPlot.Colors.Orange;
 
-            var cursor = _formsPlot.Plot.Add.VerticalLine(_currentX, 2, Colors.LimeGreen);
-            cursor.LinePattern = LinePattern.Solid;
+            var cursor = _formsPlot.Plot.Add.VerticalLine(_currentX, 2, ScottPlot.Colors.LimeGreen);
+            cursor.LinePattern = ScottPlot.LinePattern.Solid;
         }
 
         double maxX = Math.Max(InitialAxisMaxX, Math.Ceiling(_currentX + 1));
         _formsPlot.Plot.Axes.SetLimits(0, maxX, -1.15, 1.15);
-        _formsPlot.Plot.ShowLegend(Alignment.UpperRight);
         _formsPlot.Refresh();
 
         _currentValueLabel.Text = $"{_currentX:F1}";
