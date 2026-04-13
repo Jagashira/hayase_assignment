@@ -232,7 +232,8 @@ public sealed class MainForm : Form
         }
 
         double maxX = Math.Max(InitialAxisMaxX, Math.Ceiling(_currentX + 1));
-        _formsPlot.Plot.Axes.SetLimits(0, maxX, _selectedMode.MinY, _selectedMode.MaxY);
+        (double minY, double maxY) = GetYAxisLimits();
+        _formsPlot.Plot.Axes.SetLimits(0, maxX, minY, maxY);
         _formsPlot.Refresh();
 
         _currentValueLabel.Text = $"{_currentX:F1}";
@@ -278,10 +279,30 @@ public sealed class MainForm : Form
         button.BackColor = isActive ? DrawingColor.FromArgb(220, 240, 255) : SystemColors.Control;
     }
 
+    private (double MinY, double MaxY) GetYAxisLimits()
+    {
+        var finiteValues = _series1Values
+            .Concat(_series2Values)
+            .Where(value => !double.IsNaN(value) && !double.IsInfinity(value))
+            .ToArray();
+
+        if (finiteValues.Length == 0)
+        {
+            return (_selectedMode.MinY, _selectedMode.MaxY);
+        }
+
+        double minY = Math.Min(_selectedMode.MinY, finiteValues.Min());
+        double maxY = Math.Max(_selectedMode.MaxY, finiteValues.Max());
+        double range = Math.Max(0.5, maxY - minY);
+        double padding = range * 0.08;
+
+        return (minY - padding, maxY + padding);
+    }
+
     private static double SafeTan(double x)
     {
         double value = Math.Tan(x);
-        return Math.Abs(value) > 3 ? double.NaN : value;
+        return Math.Abs(value) > 20 ? double.NaN : value;
     }
 
     private sealed record PlotMode(
