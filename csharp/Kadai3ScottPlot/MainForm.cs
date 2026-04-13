@@ -16,7 +16,7 @@ namespace Kadai3ScottPlot;
 public sealed class MainForm : Form
 {
     private const double StepX = 0.02;
-    private const int TimerIntervalMs = 100;
+    private const int TimerIntervalMs = 60;
     private const double InitialAxisMaxX = 10.0;
 
     private readonly FormsPlot _formsPlot;
@@ -35,6 +35,7 @@ public sealed class MainForm : Form
         new("Sin vs Cos", "sin(x)", "cos(x)", x => Math.Sin(x), x => Math.Cos(x), -1.15, 1.15),
         new("Sin vs Sin(2x)", "sin(x)", "sin(2x)", x => Math.Sin(x), x => Math.Sin(2 * x), -1.15, 1.15),
         new("Sin vs Damped Sin", "sin(x)", "e^(-0.12x)sin(3x)", x => Math.Sin(x), x => Math.Exp(-0.12 * x) * Math.Sin(3 * x), -1.15, 1.15),
+        new("Exp vs Exp Decay", "e^(0.12x)", "e^(-0.12x)", x => Math.Exp(0.12 * x), x => Math.Exp(-0.12 * x), 0, 8),
         new("Tan vs Sin", "tan(x)", "sin(x)", SafeTan, x => Math.Sin(x), -3.2, 3.2),
     };
 
