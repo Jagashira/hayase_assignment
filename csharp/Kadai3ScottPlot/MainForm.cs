@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Windows.Forms;
 using ScottPlot.WinForms;
 using DrawingContentAlignment = System.Drawing.ContentAlignment;
@@ -24,12 +25,21 @@ public sealed class MainForm : Form
     private readonly Button _startButton;
     private readonly Button _stopButton;
     private readonly Button _resetButton;
+    private readonly ComboBox _modeComboBox;
 
     private readonly List<double> _xValues = new();
-    private readonly List<double> _sinValues = new();
-    private readonly List<double> _cosValues = new();
+    private readonly List<double> _series1Values = new();
+    private readonly List<double> _series2Values = new();
+    private readonly PlotMode[] _plotModes =
+    {
+        new("Sin vs Cos", "sin(x)", "cos(x)", x => Math.Sin(x), x => Math.Cos(x), -1.15, 1.15),
+        new("Sin vs Sin(2x)", "sin(x)", "sin(2x)", x => Math.Sin(x), x => Math.Sin(2 * x), -1.15, 1.15),
+        new("Sin vs Damped Sin", "sin(x)", "e^(-0.12x)sin(3x)", x => Math.Sin(x), x => Math.Exp(-0.12 * x) * Math.Sin(3 * x), -1.15, 1.15),
+        new("Tan vs Sin", "tan(x)", "sin(x)", SafeTan, x => Math.Sin(x), -3.2, 3.2),
+    };
 
     private double _currentX;
+    private PlotMode _selectedMode;
 
     public MainForm()
     {
@@ -71,9 +81,25 @@ public sealed class MainForm : Form
         };
         _resetButton.Click += (_, _) => ResetAndRender();
 
+        _modeComboBox = new ComboBox
+        {
+            Width = 220,
+            DropDownStyle = ComboBoxStyle.DropDownList,
+            Margin = new Padding(18, 0, 0, 0),
+        };
+        _modeComboBox.Items.AddRange(_plotModes.Select(mode => mode.Name).Cast<object>().ToArray());
+        _modeComboBox.SelectedIndexChanged += (_, _) =>
+        {
+            _selectedMode = _plotModes[_modeComboBox.SelectedIndex];
+            ConfigurePlot();
+            ResetAndRender();
+            _timer.Start();
+        };
+
         topPanel.Controls.Add(_startButton);
         topPanel.Controls.Add(_stopButton);
         topPanel.Controls.Add(_resetButton);
+        topPanel.Controls.Add(_modeComboBox);
 
         var plotHost = new Panel
         {
@@ -112,6 +138,8 @@ public sealed class MainForm : Form
         };
         _timer.Tick += (_, _) => AdvancePlot();
 
+        _selectedMode = _plotModes[0];
+        _modeComboBox.SelectedIndex = 0;
         ConfigurePlot();
         ResetAndRender();
         _timer.Start();
@@ -119,7 +147,7 @@ public sealed class MainForm : Form
 
     private void ConfigurePlot()
     {
-        _formsPlot.Plot.Title("Sin vs Cos");
+        _formsPlot.Plot.Title(_selectedMode.Name);
         _formsPlot.Plot.XLabel("X");
         _formsPlot.Plot.YLabel("Y");
         _formsPlot.Plot.Axes.Right.IsVisible = false;
@@ -133,8 +161,8 @@ public sealed class MainForm : Form
 
         _currentX = 0;
         _xValues.Clear();
-        _sinValues.Clear();
-        _cosValues.Clear();
+        _series1Values.Clear();
+        _series2Values.Clear();
         AppendCurrentPoint();
 
         RenderPlot();
@@ -151,8 +179,8 @@ public sealed class MainForm : Form
     private void AppendCurrentPoint()
     {
         _xValues.Add(_currentX);
-        _sinValues.Add(Math.Sin(_currentX));
-        _cosValues.Add(Math.Cos(_currentX));
+        _series1Values.Add(_selectedMode.Series1(_currentX));
+        _series2Values.Add(_selectedMode.Series2(_currentX));
     }
 
     private void RenderPlot()
@@ -162,25 +190,25 @@ public sealed class MainForm : Form
         if (_xValues.Count > 0)
         {
             var xs = _xValues.ToArray();
-            var sinYs = _sinValues.ToArray();
-            var cosYs = _cosValues.ToArray();
+            var series1Ys = _series1Values.ToArray();
+            var series2Ys = _series2Values.ToArray();
 
-            var sinScatter = _formsPlot.Plot.Add.Scatter(xs, sinYs);
-            sinScatter.LineWidth = 2;
-            sinScatter.Color = ScottPlot.Colors.DodgerBlue;
-            sinScatter.MarkerSize = 0;
+            var line1 = _formsPlot.Plot.Add.Scatter(xs, series1Ys);
+            line1.LineWidth = 2;
+            line1.Color = ScottPlot.Colors.DodgerBlue;
+            line1.MarkerSize = 0;
 
-            var cosScatter = _formsPlot.Plot.Add.Scatter(xs, cosYs);
-            cosScatter.LineWidth = 2;
-            cosScatter.Color = ScottPlot.Colors.Orange;
-            cosScatter.MarkerSize = 0;
+            var line2 = _formsPlot.Plot.Add.Scatter(xs, series2Ys);
+            line2.LineWidth = 2;
+            line2.Color = ScottPlot.Colors.Orange;
+            line2.MarkerSize = 0;
 
             var cursor = _formsPlot.Plot.Add.VerticalLine(_currentX, 2, ScottPlot.Colors.LimeGreen);
             cursor.LinePattern = ScottPlot.LinePattern.Solid;
         }
 
         double maxX = Math.Max(InitialAxisMaxX, Math.Ceiling(_currentX + 1));
-        _formsPlot.Plot.Axes.SetLimits(0, maxX, -1.15, 1.15);
+        _formsPlot.Plot.Axes.SetLimits(0, maxX, _selectedMode.MinY, _selectedMode.MaxY);
         _formsPlot.Refresh();
 
         _currentValueLabel.Text = $"{_currentX:F1}";
@@ -194,4 +222,19 @@ public sealed class MainForm : Form
         _currentValueLabel.Top = parent.ClientSize.Height - _currentValueLabel.Height - 16;
         _currentValueLabel.BringToFront();
     }
+
+    private static double SafeTan(double x)
+    {
+        double value = Math.Tan(x);
+        return Math.Abs(value) > 3 ? double.NaN : value;
+    }
+
+    private sealed record PlotMode(
+        string Name,
+        string Series1Name,
+        string Series2Name,
+        Func<double, double> Series1,
+        Func<double, double> Series2,
+        double MinY,
+        double MaxY);
 }
