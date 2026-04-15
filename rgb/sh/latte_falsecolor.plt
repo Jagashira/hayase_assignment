@@ -9,7 +9,7 @@ title_text = (MODE == 1 ? "Condition 1: r > g > b" : \
              MODE == 2 ? "Condition 2: r > g > b + range filters" : \
              MODE == 3 ? "Condition 3: 5 brown points + 5 gray points" : \
                          "Condition 4: 15 brown points + 5 gray points")
-set title title_text
+# set title title_text
 
 set size ratio -1
 set view map
@@ -75,7 +75,7 @@ selected(r,g,b) = (MODE == 1 ? is_brown1(r,g,b) : \
                    MODE == 2 ? is_brown2(r,g,b) : \
                    MODE == 3 ? is_brown3(r,g,b) : \
                                is_brown4(r,g,b))
-cyan = rgb(120,220,255)
+cyan = rgb(255, 0, 0)
 plot INPUT using 2:1:(selected($3,$4,$5) ? cyan : rgb($3,$4,$5)) with rgbimage
 
 unset output
