@@ -1390,33 +1390,60 @@ void CLASS nikon_load_raw()
     }
 
     for (col=0; col < raw_width; col++) {
+      int extra_bits;
+      int tmp1, tmp2;
+      int diff_before_sign;
+      int sign_check;
+      int pred_before, pred_after;
+      int curve_index;
+
       i = gethuff(huff);
       len = i & 15;
       shl = i >> 4;
-      diff = ((getbits(len-shl) << 1) + 1) << shl >> 1;
+      extra_bits = getbits(len-shl);
+      tmp1 = (extra_bits << 1) + 1;
+      tmp2 = tmp1 << shl;
+      diff_before_sign = tmp2 >> 1;
+      sign_check = len > 0 ? (diff_before_sign & (1 << (len-1))) : 0;
+      diff = diff_before_sign;
 
       if ((diff & (1 << (len-1))) == 0)
         diff -= (1 << len) - !shl;
 
+      pred_before = hpred[col & 1];
       if (col < 2)
         hpred[col] = vpred[row & 1][col] += diff;
       else
         hpred[col & 1] += diff;
+      pred_after = hpred[col & 1];
 
       if ((ushort)(hpred[col & 1] + min) >= max)
         derror();
 
-      RAW(row,col) = curve[LIM((short)hpred[col & 1],0,0x3fff)];
+      curve_index = LIM((short) pred_after,0,0x3fff);
+      RAW(row,col) = curve[curve_index];
 
       if (trace_point_match(row, col)) {
         char color = "RGBG"[fcol(row,col)];
         fprintf (stderr, "\n[TRACE] nikon_load_raw decode at (%d,%d)\n", row+1, col+1);
         fprintf (stderr, "日本語: NEFの圧縮データを復号して、この点のRAW値を求めています。\n");
-        fprintf (stderr, "huff_index=%d len=%d shl=%d diff=%d min=%d max=%d\n",
-            i, len, shl, diff, min, max);
-        fprintf (stderr, "predictor=%d curve_input=%d raw_color=%c raw_value=%u\n",
-            hpred[col & 1], LIM((short)hpred[col & 1],0,0x3fff),
-            color, RAW(row,col));
+        fprintf (stderr, "raw_color=%c\n", color);
+        fprintf (stderr, "i = gethuff(huff) = %d\n", i);
+        fprintf (stderr, "len = i & 15 = %d\n", len);
+        fprintf (stderr, "shl = i >> 4 = %d\n", shl);
+        fprintf (stderr, "extra_bits = getbits(len-shl) = %d\n", extra_bits);
+        fprintf (stderr, "tmp1 = (extra_bits << 1) + 1 = %d\n", tmp1);
+        fprintf (stderr, "tmp2 = tmp1 << shl = %d\n", tmp2);
+        fprintf (stderr, "diff_before_sign = tmp2 >> 1 = %d\n", diff_before_sign);
+        fprintf (stderr, "sign_check = diff_before_sign & (1 << (len-1)) = %d\n",
+            sign_check);
+        fprintf (stderr, "diff_after_sign = %d\n", diff);
+        fprintf (stderr, "pred_before = hpred[col & 1] = %d\n", pred_before);
+        fprintf (stderr, "pred_after = pred_before + diff = %d\n", pred_after);
+        fprintf (stderr, "curve_index = LIM((short)pred_after, 0, 0x3fff) = %d\n",
+            curve_index);
+        fprintf (stderr, "raw_value = curve[curve_index] = %u\n", RAW(row,col));
+        fprintf (stderr, "min=%d max=%d\n", min, max);
       }
     }
   }

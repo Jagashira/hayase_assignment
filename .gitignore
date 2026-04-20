@@ -8,24 +8,31 @@ Thumbs.db
 # Windows Zone.Identifier
 *:Zone.Identifier
 
-# Build outputs
-a.out
+# Build outputs / binaries
+/a.out
 *.o
 *.out
-bin/
-obj/
-.vs/
-output/
-digital/__pycache__/
-digital/export_nef_metadata
-digital/extract_shutter_rgb/
-digital/extract_shutter_rgb
+/bin/
+/obj/
+/.vs/
 
-# executables
-rgb/grey
-rgb/rgb
+# Generated executables in this repo
+/digital/export_nef_metadata
+/digital/extract_shutter_rgb
+/digital/py/export_tmp_nef_summary
+/rgb/grey
+/rgb/rgb
 
-# Generated images / binaries
+# Python cache
+__pycache__/
+*.pyc
+
+# Generated output directories
+/digital/output/
+/gnuplot/
+/public/tmp/
+
+# Generated images / raster outputs
 *.png
 *.jpg
 *.jpeg
@@ -33,18 +40,11 @@ rgb/rgb
 *.tiff
 *.tif
 
-# Ignore all RAW files by default
-# *.NEF
-
-# But keep this one
-!public/sakura/DSC_5901.NEF
-
-# Ignore csv / dat
+# Generated tables / text data
 *.csv
 *.dat
-
-# Ignore all txt
 *.txt
+*.json
 
 # Keep source and scripts
 !*.c
@@ -58,3 +58,10 @@ rgb/rgb
 !*.sh
 !*.plt
 !Makefile
+
+# RAW files
+# Ignore all RAW files by default
+# *.NEF
+
+# But keep this one
+!public/sakura/DSC_5901.NEF

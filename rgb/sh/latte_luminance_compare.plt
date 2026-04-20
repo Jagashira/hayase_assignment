@@ -1,12 +1,9 @@
-set terminal pngcairo size 1800,1200 enhanced font "Helvetica,14"
+set terminal pngcairo size 1800,1200 enhanced font "Helvetica,14" background rgb "#f2f2f2"
 set output OUTPUT
 
 unset key
 unset colorbox
-set multiplot layout 2,3 title "Luminance comparison and helper maps"
-
-set object 1 rect from screen 0,0 to screen 1,1 behind fc rgb "#f2f2f2" fillstyle solid 1.0
-set size ratio -1
+set multiplot layout 2,3 rowsfirst title "Luminance comparison and helper maps"
 set view map
 set xrange [*:*]
 set yrange [*:*] reverse
@@ -14,10 +11,10 @@ set offsets 0,0,0,0
 set border linecolor rgb "#666666"
 unset xtics
 unset ytics
-set lmargin 1
-set rmargin 1
-set tmargin 2
-set bmargin 1
+unset lmargin
+unset rmargin
+unset tmargin
+unset bmargin
 
 gray(v) = int(v) * 65536 + int(v) * 256 + int(v)
 diverging(v) = (v < 128 ? int(2*v) * 256 + 255 : 255 * 65536 + int(2*(255-v)) * 256)
