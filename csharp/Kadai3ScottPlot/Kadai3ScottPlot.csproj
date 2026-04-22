@@ -11,6 +11,7 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <FrameworkReference Include="Microsoft.WindowsDesktop.App.WPF" />
     <PackageReference Include="ScottPlot.WinForms" Version="5.0.15" />
   </ItemGroup>
 </Project>

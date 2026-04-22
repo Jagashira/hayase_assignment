@@ -4,6 +4,7 @@ using System.Diagnostics;
 using System.Linq;
 using System.Threading;
 using System.Windows.Forms;
+using System.Windows.Threading;
 using ScottPlot.WinForms;
 using DrawingColor = System.Drawing.Color;
 using DrawingFont = System.Drawing.Font;
@@ -23,6 +24,7 @@ public sealed class TimerComparisonForm : Form
     private readonly ComparisonPane _winFormsPane;
     private readonly ComparisonPane _threadingPane;
     private readonly ComparisonPane _timersPane;
+    private readonly ComparisonPane _dispatcherPane;
 
     private readonly Func<double, double> _series1;
     private readonly Func<double, double> _series2;
@@ -55,8 +57,8 @@ public sealed class TimerComparisonForm : Form
 
         Text = $"Timer比較 - {modeName}";
         StartPosition = FormStartPosition.CenterParent;
-        MinimumSize = new DrawingSize(1200, 760);
-        ClientSize = new DrawingSize(1380, 820);
+        MinimumSize = new DrawingSize(1600, 760);
+        ClientSize = new DrawingSize(1820, 820);
 
         var descriptionLabel = new FormsLabel
         {
@@ -64,27 +66,30 @@ public sealed class TimerComparisonForm : Form
             Height = 52,
             Padding = new Padding(12, 12, 12, 8),
             Font = new DrawingFont("Segoe UI", 10, DrawingFontStyle.Regular),
-            Text = "同じ関数・同じ速度で 3 種類の Timer を同時に動かしています。更新回数と経過時間を見比べて違いを確認できます。",
+            Text = "同じ関数・同じ速度で 4 種類の Timer を同時に動かしています。更新回数と経過時間を見比べて違いを確認できます。",
         };
 
         var table = new TableLayoutPanel
         {
             Dock = DockStyle.Fill,
-            ColumnCount = 3,
+            ColumnCount = 4,
             RowCount = 1,
             Padding = new Padding(10),
         };
-        table.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 33.333f));
-        table.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 33.333f));
-        table.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 33.333f));
+        table.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 25f));
+        table.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 25f));
+        table.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 25f));
+        table.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 25f));
 
         _winFormsPane = CreatePane("System.Windows.Forms.Timer");
         _threadingPane = CreatePane("System.Threading.Timer");
         _timersPane = CreatePane("System.Timers.Timer");
+        _dispatcherPane = CreatePane("System.Windows.Threading.DispatcherTimer");
 
         table.Controls.Add(_winFormsPane.HostPanel, 0, 0);
         table.Controls.Add(_threadingPane.HostPanel, 1, 0);
         table.Controls.Add(_timersPane.HostPanel, 2, 0);
+        table.Controls.Add(_dispatcherPane.HostPanel, 3, 0);
 
         Controls.Add(table);
         Controls.Add(descriptionLabel);
@@ -107,9 +112,14 @@ public sealed class TimerComparisonForm : Form
         };
         _timersPane.TimersTimer.Elapsed += (_, _) => OnBackgroundTimerTick(_timersPane);
 
+        _dispatcherPane.DispatcherTimerController = new DispatcherTimerController(
+            _timerIntervalMs,
+            () => OnBackgroundTimerTick(_dispatcherPane));
+
         ResetPane(_winFormsPane);
         ResetPane(_threadingPane);
         ResetPane(_timersPane);
+        ResetPane(_dispatcherPane);
 
         StartTimers();
     }
@@ -119,6 +129,7 @@ public sealed class TimerComparisonForm : Form
         StopTimers();
         _threadingPane.ThreadingTimer?.Dispose();
         _timersPane.TimersTimer?.Dispose();
+        _dispatcherPane.DispatcherTimerController?.Dispose();
         base.OnFormClosed(e);
     }
 
@@ -164,10 +175,12 @@ public sealed class TimerComparisonForm : Form
         _winFormsPane.Stopwatch.Restart();
         _threadingPane.Stopwatch.Restart();
         _timersPane.Stopwatch.Restart();
+        _dispatcherPane.Stopwatch.Restart();
 
         _winFormsPane.FormsTimer?.Start();
         _threadingPane.ThreadingTimer?.Change(_timerIntervalMs, _timerIntervalMs);
         _timersPane.TimersTimer?.Start();
+        _dispatcherPane.DispatcherTimerController?.Start();
     }
 
     private void StopTimers()
@@ -175,6 +188,7 @@ public sealed class TimerComparisonForm : Form
         _winFormsPane.FormsTimer?.Stop();
         _threadingPane.ThreadingTimer?.Change(Timeout.Infinite, Timeout.Infinite);
         _timersPane.TimersTimer?.Stop();
+        _dispatcherPane.DispatcherTimerController?.Stop();
     }
 
     private void ResetPane(ComparisonPane pane)
@@ -354,7 +368,81 @@ public sealed class TimerComparisonForm : Form
         public FormsTimer? FormsTimer { get; set; }
         public ThreadingTimer? ThreadingTimer { get; set; }
         public TimersTimer? TimersTimer { get; set; }
+        public DispatcherTimerController? DispatcherTimerController { get; set; }
         public double CurrentX { get; set; }
         public int TickCount { get; set; }
+    }
+
+    private sealed class DispatcherTimerController : IDisposable
+    {
+        private readonly int _intervalMs;
+        private readonly Action _tickAction;
+        private readonly ManualResetEventSlim _ready = new(false);
+        private readonly Thread _thread;
+
+        private Dispatcher? _dispatcher;
+        private DispatcherTimer? _timer;
+
+        public DispatcherTimerController(int intervalMs, Action tickAction)
+        {
+            _intervalMs = intervalMs;
+            _tickAction = tickAction;
+            _thread = new Thread(RunDispatcherThread)
+            {
+                IsBackground = true,
+                Name = "DispatcherTimerComparisonThread",
+            };
+            _thread.SetApartmentState(ApartmentState.STA);
+            _thread.Start();
+            _ready.Wait();
+        }
+
+        public void Start()
+        {
+            _dispatcher?.BeginInvoke(new Action(() =>
+            {
+                if (_timer is not null)
+                {
+                    _timer.Interval = TimeSpan.FromMilliseconds(_intervalMs);
+                    _timer.Start();
+                }
+            }));
+        }
+
+        public void Stop()
+        {
+            _dispatcher?.BeginInvoke(new Action(() => _timer?.Stop()));
+        }
+
+        public void Dispose()
+        {
+            if (_dispatcher is null)
+            {
+                return;
+            }
+
+            _dispatcher.Invoke(() =>
+            {
+                _timer?.Stop();
+                _dispatcher.BeginInvokeShutdown(DispatcherPriority.Background);
+            });
+
+            if (_thread.IsAlive)
+            {
+                _thread.Join(1000);
+            }
+        }
+
+        private void RunDispatcherThread()
+        {
+            _dispatcher = Dispatcher.CurrentDispatcher;
+            _timer = new DispatcherTimer(DispatcherPriority.Normal, _dispatcher)
+            {
+                Interval = TimeSpan.FromMilliseconds(_intervalMs),
+            };
+            _timer.Tick += (_, _) => _tickAction();
+            _ready.Set();
+            Dispatcher.Run();
+        }
     }
 }
