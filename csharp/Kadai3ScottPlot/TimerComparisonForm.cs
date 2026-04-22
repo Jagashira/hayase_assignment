@@ -330,9 +330,6 @@ public sealed class TimerComparisonForm : Form
         catch (InvalidOperationException)
         {
         }
-        catch (ObjectDisposedException)
-        {
-        }
     }
 
     private sealed class ComparisonPane

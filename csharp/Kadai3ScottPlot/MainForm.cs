@@ -482,9 +482,6 @@ public sealed class MainForm : Form
         catch (InvalidOperationException)
         {
         }
-        catch (ObjectDisposedException)
-        {
-        }
     }
 
     private static string GetTimerKindLabel(TimerKind timerKind)
