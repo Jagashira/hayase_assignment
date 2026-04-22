@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 using System.Windows.Forms;
 using ScottPlot.WinForms;
 using DrawingContentAlignment = System.Drawing.ContentAlignment;
@@ -10,6 +11,8 @@ using DrawingFontStyle = System.Drawing.FontStyle;
 using DrawingSize = System.Drawing.Size;
 using FormsLabel = System.Windows.Forms.Label;
 using FormsTimer = System.Windows.Forms.Timer;
+using ThreadingTimer = System.Threading.Timer;
+using TimersTimer = System.Timers.Timer;
 
 namespace Kadai3ScottPlot;
 
@@ -20,9 +23,12 @@ public sealed class MainForm : Form
     private const double TanAsymptoteClipWidth = 0.03;
 
     private readonly FormsPlot _formsPlot;
-    private readonly FormsTimer _timer;
+    private readonly FormsTimer _formsTimer;
+    private readonly ThreadingTimer _threadingTimer;
+    private readonly TimersTimer _timersTimer;
     private readonly FormsLabel _currentValueLabel;
     private readonly FormsLabel _speedLabel;
+    private readonly FormsLabel _timerTypeLabel;
     private readonly Button _startButton;
     private readonly Button _stopButton;
     private readonly Button _resetButton;
@@ -30,6 +36,9 @@ public sealed class MainForm : Form
     private readonly Button _normalSpeedButton;
     private readonly Button _fastSpeedButton;
     private readonly Button _fasterSpeedButton;
+    private readonly Button _winFormsTimerButton;
+    private readonly Button _threadingTimerButton;
+    private readonly Button _timersTimerButton;
     private readonly ComboBox _modeComboBox;
 
     private readonly List<double> _xValues = new();
@@ -47,6 +56,7 @@ public sealed class MainForm : Form
     private double _currentX;
     private double _speedMultiplier;
     private PlotMode _selectedMode;
+    private TimerKind _activeTimerKind;
 
     public MainForm()
     {
@@ -58,10 +68,11 @@ public sealed class MainForm : Form
         var topPanel = new FlowLayoutPanel
         {
             Dock = DockStyle.Top,
-            Height = 56,
+            Height = 96,
             FlowDirection = FlowDirection.LeftToRight,
             Padding = new Padding(12, 10, 12, 10),
             BackColor = DrawingColor.FromArgb(245, 245, 245),
+            WrapContents = true,
         };
 
         _startButton = new Button
@@ -70,7 +81,7 @@ public sealed class MainForm : Form
             Width = 100,
             Height = 32,
         };
-        _startButton.Click += (_, _) => _timer.Start();
+        _startButton.Click += (_, _) => StartActiveTimer();
 
         _stopButton = new Button
         {
@@ -78,7 +89,7 @@ public sealed class MainForm : Form
             Width = 100,
             Height = 32,
         };
-        _stopButton.Click += (_, _) => _timer.Stop();
+        _stopButton.Click += (_, _) => StopAllTimers();
 
         _resetButton = new Button
         {
@@ -92,6 +103,9 @@ public sealed class MainForm : Form
         _normalSpeedButton = CreateSpeedButton("1.0x", 1.0);
         _fastSpeedButton = CreateSpeedButton("1.7x", 1.7);
         _fasterSpeedButton = CreateSpeedButton("3.0x", 3.0);
+        _winFormsTimerButton = CreateTimerKindButton("WinForms", TimerKind.WinForms);
+        _threadingTimerButton = CreateTimerKindButton("Threading", TimerKind.Threading);
+        _timersTimerButton = CreateTimerKindButton("Timers", TimerKind.Timers);
 
         _modeComboBox = new ComboBox
         {
@@ -105,10 +119,16 @@ public sealed class MainForm : Form
             _selectedMode = _plotModes[_modeComboBox.SelectedIndex];
             ConfigurePlot();
             ResetAndRender();
-            _timer.Start();
+            StartActiveTimer();
         };
 
         _speedLabel = new FormsLabel
+        {
+            AutoSize = true,
+            Margin = new Padding(12, 8, 0, 0),
+        };
+
+        _timerTypeLabel = new FormsLabel
         {
             AutoSize = true,
             Margin = new Padding(12, 8, 0, 0),
@@ -122,6 +142,10 @@ public sealed class MainForm : Form
         topPanel.Controls.Add(_fastSpeedButton);
         topPanel.Controls.Add(_fasterSpeedButton);
         topPanel.Controls.Add(_speedLabel);
+        topPanel.Controls.Add(_winFormsTimerButton);
+        topPanel.Controls.Add(_threadingTimerButton);
+        topPanel.Controls.Add(_timersTimerButton);
+        topPanel.Controls.Add(_timerTypeLabel);
         topPanel.Controls.Add(_modeComboBox);
 
         var plotHost = new Panel
@@ -155,19 +179,33 @@ public sealed class MainForm : Form
         Controls.Add(plotHost);
         Controls.Add(topPanel);
 
-        _timer = new FormsTimer
+        _formsTimer = new FormsTimer
         {
             Interval = TimerIntervalMs,
         };
-        _timer.Tick += (_, _) => AdvancePlot();
+        _formsTimer.Tick += (_, _) => AdvancePlot();
+
+        _threadingTimer = new ThreadingTimer(
+            _ => OnBackgroundTimerTick(TimerKind.Threading),
+            null,
+            Timeout.Infinite,
+            Timeout.Infinite);
+
+        _timersTimer = new TimersTimer(TimerIntervalMs)
+        {
+            AutoReset = true,
+        };
+        _timersTimer.Elapsed += (_, _) => OnBackgroundTimerTick(TimerKind.Timers);
 
         _speedMultiplier = 1.0;
         _selectedMode = _plotModes[0];
+        _activeTimerKind = TimerKind.WinForms;
         _modeComboBox.SelectedIndex = 0;
         UpdateSpeedButtons();
+        UpdateTimerKindButtons();
         ConfigurePlot();
         ResetAndRender();
-        _timer.Start();
+        StartActiveTimer();
     }
 
     private void ConfigurePlot()
@@ -182,7 +220,7 @@ public sealed class MainForm : Form
 
     private void ResetAndRender()
     {
-        _timer.Stop();
+        StopAllTimers();
 
         _currentX = 0;
         _xValues.Clear();
@@ -193,9 +231,17 @@ public sealed class MainForm : Form
         RenderPlot();
     }
 
+    protected override void OnFormClosed(FormClosedEventArgs e)
+    {
+        StopAllTimers();
+        _threadingTimer.Dispose();
+        _timersTimer.Dispose();
+        base.OnFormClosed(e);
+    }
+
     private void AdvancePlot()
     {
-        _currentX += (_timer.Interval / 1000.0) * _speedMultiplier;
+        _currentX += (TimerIntervalMs / 1000.0) * _speedMultiplier;
         AppendCurrentPoint();
 
         RenderPlot();
@@ -316,6 +362,18 @@ public sealed class MainForm : Form
         return button;
     }
 
+    private Button CreateTimerKindButton(string text, TimerKind timerKind)
+    {
+        var button = new Button
+        {
+            Text = text,
+            Width = 92,
+            Height = 32,
+        };
+        button.Click += (_, _) => SwitchTimerKind(timerKind);
+        return button;
+    }
+
     private void UpdateSpeedButtons()
     {
         UpdateSpeedButtonStyle(_halfSpeedButton, 0.5);
@@ -325,10 +383,93 @@ public sealed class MainForm : Form
         _speedLabel.Text = $"速度: {_speedMultiplier:0.0}x";
     }
 
+    private void UpdateTimerKindButtons()
+    {
+        UpdateTimerKindButtonStyle(_winFormsTimerButton, TimerKind.WinForms);
+        UpdateTimerKindButtonStyle(_threadingTimerButton, TimerKind.Threading);
+        UpdateTimerKindButtonStyle(_timersTimerButton, TimerKind.Timers);
+        _timerTypeLabel.Text = $"Timer: {GetTimerKindLabel(_activeTimerKind)}";
+    }
+
     private void UpdateSpeedButtonStyle(Button button, double speedMultiplier)
     {
         bool isActive = Math.Abs(_speedMultiplier - speedMultiplier) < 0.001;
         button.BackColor = isActive ? DrawingColor.FromArgb(220, 240, 255) : SystemColors.Control;
+    }
+
+    private void UpdateTimerKindButtonStyle(Button button, TimerKind timerKind)
+    {
+        bool isActive = _activeTimerKind == timerKind;
+        button.BackColor = isActive ? DrawingColor.FromArgb(220, 240, 255) : SystemColors.Control;
+    }
+
+    private void SwitchTimerKind(TimerKind timerKind)
+    {
+        _activeTimerKind = timerKind;
+        UpdateTimerKindButtons();
+        StopAllTimers();
+        StartActiveTimer();
+    }
+
+    private void StartActiveTimer()
+    {
+        StopAllTimers();
+
+        switch (_activeTimerKind)
+        {
+            case TimerKind.WinForms:
+                _formsTimer.Start();
+                break;
+            case TimerKind.Threading:
+                _threadingTimer.Change(TimerIntervalMs, TimerIntervalMs);
+                break;
+            case TimerKind.Timers:
+                _timersTimer.Start();
+                break;
+        }
+    }
+
+    private void StopAllTimers()
+    {
+        _formsTimer.Stop();
+        _threadingTimer.Change(Timeout.Infinite, Timeout.Infinite);
+        _timersTimer.Stop();
+    }
+
+    private void OnBackgroundTimerTick(TimerKind timerKind)
+    {
+        if (_activeTimerKind != timerKind || IsDisposed || !IsHandleCreated)
+        {
+            return;
+        }
+
+        try
+        {
+            BeginInvoke((MethodInvoker)(() =>
+            {
+                if (_activeTimerKind == timerKind && !IsDisposed)
+                {
+                    AdvancePlot();
+                }
+            }));
+        }
+        catch (InvalidOperationException)
+        {
+        }
+        catch (ObjectDisposedException)
+        {
+        }
+    }
+
+    private static string GetTimerKindLabel(TimerKind timerKind)
+    {
+        return timerKind switch
+        {
+            TimerKind.WinForms => "System.Windows.Forms.Timer",
+            TimerKind.Threading => "System.Threading.Timer",
+            TimerKind.Timers => "System.Timers.Timer",
+            _ => timerKind.ToString(),
+        };
     }
 
     private (double MinY, double MaxY) GetYAxisLimits()
@@ -379,4 +520,11 @@ public sealed class MainForm : Form
         double MaxY,
         bool SplitAtNaN,
         bool UseFixedYAxis);
+
+    private enum TimerKind
+    {
+        WinForms,
+        Threading,
+        Timers,
+    }
 }
