@@ -32,6 +32,7 @@ public sealed class MainForm : Form
     private readonly Button _startButton;
     private readonly Button _stopButton;
     private readonly Button _resetButton;
+    private readonly Button _compareTimersButton;
     private readonly Button _halfSpeedButton;
     private readonly Button _normalSpeedButton;
     private readonly Button _fastSpeedButton;
@@ -99,6 +100,14 @@ public sealed class MainForm : Form
         };
         _resetButton.Click += (_, _) => ResetAndRender();
 
+        _compareTimersButton = new Button
+        {
+            Text = "Timer比較",
+            Width = 110,
+            Height = 32,
+        };
+        _compareTimersButton.Click += (_, _) => OpenTimerComparisonForm();
+
         _halfSpeedButton = CreateSpeedButton("0.5x", 0.5);
         _normalSpeedButton = CreateSpeedButton("1.0x", 1.0);
         _fastSpeedButton = CreateSpeedButton("1.7x", 1.7);
@@ -137,6 +146,7 @@ public sealed class MainForm : Form
         topPanel.Controls.Add(_startButton);
         topPanel.Controls.Add(_stopButton);
         topPanel.Controls.Add(_resetButton);
+        topPanel.Controls.Add(_compareTimersButton);
         topPanel.Controls.Add(_halfSpeedButton);
         topPanel.Controls.Add(_normalSpeedButton);
         topPanel.Controls.Add(_fastSpeedButton);
@@ -286,6 +296,22 @@ public sealed class MainForm : Form
         _currentValueLabel.Left = parent.ClientSize.Width - _currentValueLabel.Width - 22;
         _currentValueLabel.Top = parent.ClientSize.Height - _currentValueLabel.Height - 16;
         _currentValueLabel.BringToFront();
+    }
+
+    private void OpenTimerComparisonForm()
+    {
+        var comparisonForm = new TimerComparisonForm(
+            _selectedMode.Name,
+            _selectedMode.Series1,
+            _selectedMode.Series2,
+            _selectedMode.MinY,
+            _selectedMode.MaxY,
+            _selectedMode.SplitAtNaN,
+            _selectedMode.UseFixedYAxis,
+            _speedMultiplier,
+            TimerIntervalMs);
+
+        comparisonForm.Show(this);
     }
 
     private void AddSeries(double[] xs, double[] ys, ScottPlot.Color color)
