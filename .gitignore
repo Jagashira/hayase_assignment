@@ -32,6 +32,13 @@ __pycache__/
 /gnuplot/
 /public/tmp/
 
+# Keep reusable gnuplot helpers while ignoring generated data/images.
+!/gnuplot/
+!/gnuplot/*.py
+!/gnuplot/README.md
+/gnuplot/data/*.gp
+/gnuplot/output/
+
 # Generated images / raster outputs
 *.png
 *.jpg

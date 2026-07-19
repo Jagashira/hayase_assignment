@@ -37,6 +37,7 @@ struct summary_row {
     unsigned raw_g;
     unsigned raw_b;
     double raw_luminance;
+    unsigned sensor_raw_value;
     unsigned final_r;
     unsigned final_g;
     unsigned final_b;
@@ -310,6 +311,18 @@ static int collect_trace(const char *dcraw_path,
             found_raw = 1;
         }
         if (sscanf(line,
+                   "[TRACE] CSV確認: 1始まり座標 row=%d col=%d の raw_value_100x100.csv 相当値 = %u",
+                   &row_tmp, &col_tmp, &r_tmp) == 3) {
+            row->sensor_raw_value = r_tmp;
+        }
+        {
+            const char *raw_value_prefix = "raw_value = curve[curve_index] = ";
+            char *found = strstr(line, raw_value_prefix);
+            if (found) {
+                row->sensor_raw_value = (unsigned)strtoul(found + strlen(raw_value_prefix), NULL, 10);
+            }
+        }
+        if (sscanf(line,
                    "TRACE_RESULT,row=%d,col=%d,R=%u,G=%u,B=%u,L=%lf",
                    &row_tmp, &col_tmp, &r_tmp, &g_tmp, &b_tmp, &l_tmp) == 6) {
             row->final_r = r_tmp;
@@ -340,6 +353,7 @@ static int write_header(FILE *out) {
     }
     return fprintf(out,
                    "\"Trace Row\",\"Trace Col\",\"Raw R\",\"Raw G\",\"Raw B\",\"Raw Luminance\","
+                   "\"Sensor Raw Value\","
                    "\"Final R\",\"Final G\",\"Final B\",\"Final Luminance\"\n") < 0
                ? -1
                : 0;
@@ -353,10 +367,11 @@ static int write_row(FILE *out, const struct summary_row *row) {
         }
     }
     return fprintf(out,
-                   "\"%d\",\"%d\",\"%u\",\"%u\",\"%u\",\"%.3f\","
+                   "\"%d\",\"%d\",\"%u\",\"%u\",\"%u\",\"%.3f\",\"%u\","
                    "\"%u\",\"%u\",\"%u\",\"%.3f\"\n",
                    row->row_1based, row->col_1based,
                    row->raw_r, row->raw_g, row->raw_b, row->raw_luminance,
+                   row->sensor_raw_value,
                    row->final_r, row->final_g, row->final_b, row->final_luminance) < 0
                ? -1
                : 0;

@@ -1421,7 +1421,7 @@ void CLASS nikon_load_raw()
         derror();
 
       curve_index = LIM((short) pred_after,0,0x3fff);
-      RAW(row,col) = curve[curve_index];
+      RAW(row,col) = curve[curve_index]; // raw_value 14bit
 
       if (trace_point_match(row, col)) {
         char color = "RGBG"[fcol(row,col)];
@@ -1450,13 +1450,11 @@ void CLASS nikon_load_raw()
 
   trace_raw_neighborhood (trace_row, trace_col, 2);
 
-  /* custom processing + csv output */
   {
     FILE *fp_value, *fp_color_value;
     int rmax = 100, cmax = 100;
     char color;
 
-    /* CSV出力範囲を制限: 復号直後の生RAW値をそのまま書く */
     if (rmax > height) rmax = height;
     if (cmax > raw_width) cmax = raw_width;
 
